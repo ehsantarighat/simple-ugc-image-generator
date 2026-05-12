@@ -100,6 +100,9 @@ export async function runVariation(args: RunVariationArgs): Promise<RunVariation
       description: product.description,
       preservationNotes,
     },
+    subjectMode: "product_with_model",
+    styleMode: "ugc",
+    outputScope: "few_variations",
     approvedImageNotes: args.variationRequest ?? undefined,
   });
 

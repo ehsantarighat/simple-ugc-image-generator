@@ -40,10 +40,12 @@ export async function POST(req: NextRequest) {
     const result = await runGeneration({
       userId: user.id,
       projectId: parsed.data.projectId,
-      modelId: parsed.data.modelId,
+      modelId: parsed.data.modelId ?? null,
       productId: parsed.data.productId,
       scenePrompt: parsed.data.scenePrompt,
       controls: parsed.data.controls,
+      subjectMode: parsed.data.subjectMode as "product_only" | "product_with_model",
+      styleMode: parsed.data.styleMode as "studio" | "lifestyle" | "ugc" | "hybrid",
     });
     return NextResponse.json(result);
   } catch (err) {

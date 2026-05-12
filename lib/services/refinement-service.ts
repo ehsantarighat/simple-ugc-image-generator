@@ -95,10 +95,32 @@ export async function runRefinement(
       ? ((product.preservation_rules_json as { notes?: string }).notes ?? null)
       : null;
 
+  // Pull project context so we keep subject/style/scope consistent on refinement.
+  const { data: project } = await svc
+    .from("projects")
+    .select("subject_mode, style_mode, output_scope")
+    .eq("id", source.project_id)
+    .eq("user_id", args.userId)
+    .single();
+
   const payload = buildStructuredPayload({
     mode: "image_refinement",
     scenePrompt: reqRow.raw_scene_prompt,
     controls,
+    subjectMode: (project?.subject_mode ?? "product_with_model") as
+      | "product_only"
+      | "product_with_model",
+    styleMode: (project?.style_mode ?? "ugc") as
+      | "studio"
+      | "lifestyle"
+      | "ugc"
+      | "hybrid",
+    outputScope: (project?.output_scope ?? "single_image") as
+      | "single_image"
+      | "few_variations"
+      | "multi_format_pack"
+      | "multi_concept_pack"
+      | "full_campaign_pack",
     model: { name: model.name, description: model.description },
     product: {
       name: product.name,

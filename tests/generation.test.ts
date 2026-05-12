@@ -41,6 +41,9 @@ function buildSamplePayload(overrides?: { controls?: Partial<PhotographyControls
     mode: "ugc_composite_generation",
     scenePrompt: SAMPLE_SCENE,
     controls: { ...DEFAULT_CONTROLS, ...overrides?.controls },
+    subjectMode: "product_with_model",
+    styleMode: "ugc",
+    outputScope: "single_image",
     model: { name: "Maya", description: "Brunette, mid-20s, lifestyle creator." },
     product: {
       name: "Glow Serum 30ml",
@@ -180,6 +183,9 @@ describe("product-in-hand prompts include hand/product realism", () => {
       mode: "ugc_composite_generation",
       scenePrompt: "She is holding the bottle in her hand near the mirror.",
       controls: { ...DEFAULT_CONTROLS, shotType: "product_in_hand" },
+      subjectMode: "product_with_model",
+      styleMode: "ugc",
+      outputScope: "single_image",
       model: { name: "Maya" },
       product: { name: "Serum", brandName: null, category: null, description: null, preservationNotes: null },
     });

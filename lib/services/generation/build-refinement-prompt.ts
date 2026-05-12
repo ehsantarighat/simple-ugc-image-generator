@@ -31,7 +31,7 @@ export function buildRefinementPrompt(args: BuildRefinementPromptArgs): string {
   const { payload } = args;
   const intentExtra = classifyRefinementIntent(args.refinementRequest);
 
-  const sections = [
+  const sections: string[] = [
     buildTaskBlock("image_refinement"),
     "",
     buildReferenceBlock({
@@ -40,11 +40,19 @@ export function buildRefinementPrompt(args: BuildRefinementPromptArgs): string {
       modelImageCount: args.modelImageCount,
       productImageCount: args.productImageCount,
     }),
-    "",
-    buildModelPreservationBlock({
-      rules: payload.modelPreservation,
-      model: payload.model,
-    }),
+  ];
+
+  if (payload.model) {
+    sections.push(
+      "",
+      buildModelPreservationBlock({
+        rules: payload.modelPreservation,
+        model: payload.model,
+      })
+    );
+  }
+
+  sections.push(
     "",
     buildProductPreservationBlock({
       rules: payload.productPreservation,
@@ -55,8 +63,8 @@ export function buildRefinementPrompt(args: BuildRefinementPromptArgs): string {
     "",
     buildRefinementPreservationBlock(),
     "",
-    buildRefinementRealismBlock(),
-  ];
+    buildRefinementRealismBlock()
+  );
 
   if (intentExtra) {
     sections.push("", "INTENT-SPECIFIC INSTRUCTION:", intentExtra);

@@ -38,6 +38,8 @@ export interface RequestRow {
 
 interface Props {
   projectId: string;
+  subjectMode: "product_only" | "product_with_model";
+  styleMode: "studio" | "lifestyle" | "ugc" | "hybrid";
   initialModelId: string | null;
   initialProductId: string | null;
   models: Option[];
@@ -59,12 +61,15 @@ const DEFAULT_CONTROLS: PhotographyControls = {
 
 export function ProjectWorkspace({
   projectId,
+  subjectMode,
+  styleMode,
   initialModelId,
   initialProductId,
   models,
   products,
   requests,
 }: Props) {
+  const isProductOnly = subjectMode === "product_only";
   const router = useRouter();
   const [modelId, setModelId] = React.useState<string>(initialModelId ?? "");
   const [productId, setProductId] = React.useState<string>(initialProductId ?? "");
@@ -88,7 +93,7 @@ export function ProjectWorkspace({
   }
 
   async function onGenerate() {
-    if (!modelId) return toast.error("Pick a model first.");
+    if (!isProductOnly && !modelId) return toast.error("Pick a model first.");
     if (!productId) return toast.error("Pick a product first.");
     if (scene.trim().length < 8) return toast.error("Describe the scene in a sentence or two.");
 
@@ -99,10 +104,12 @@ export function ProjectWorkspace({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           projectId,
-          modelId,
+          modelId: isProductOnly ? null : modelId,
           productId,
           scenePrompt: scene.trim(),
           controls,
+          subjectMode,
+          styleMode,
         }),
       });
       const body = (await res.json()) as
@@ -129,24 +136,28 @@ export function ProjectWorkspace({
       <div className="space-y-6">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">1. Choose model & product</CardTitle>
+            <CardTitle className="text-base">
+              1. {isProductOnly ? "Choose product" : "Choose model & product"}
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label>Model</Label>
-              <select
-                className="flex h-9 w-full rounded-md border border-[var(--color-border)] bg-transparent px-3 text-sm"
-                value={modelId}
-                onChange={(e) => onSelectModel(e.target.value)}
-              >
-                <option value="">Pick a model…</option>
-                {models.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {!isProductOnly && (
+              <div className="space-y-2">
+                <Label>Model</Label>
+                <select
+                  className="flex h-9 w-full rounded-md border border-[var(--color-border)] bg-transparent px-3 text-sm"
+                  value={modelId}
+                  onChange={(e) => onSelectModel(e.target.value)}
+                >
+                  <option value="">Pick a model…</option>
+                  {models.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div className="space-y-2">
               <Label>Product</Label>
               <select
@@ -161,6 +172,14 @@ export function ProjectWorkspace({
                   </option>
                 ))}
               </select>
+            </div>
+            <div className="flex flex-wrap gap-1.5 pt-1 text-xs text-[var(--color-muted-foreground)]">
+              <span className="rounded-full border border-[var(--color-border)] px-2 py-0.5">
+                {subjectMode === "product_only" ? "Product only" : "Product + model"}
+              </span>
+              <span className="rounded-full border border-[var(--color-border)] px-2 py-0.5 capitalize">
+                {styleMode.replace("_", " ")}
+              </span>
             </div>
           </CardContent>
         </Card>
@@ -196,7 +215,12 @@ export function ProjectWorkspace({
           size="lg"
           className="w-full"
           onClick={onGenerate}
-          disabled={generating || !modelId || !productId || scene.trim().length < 8}
+          disabled={
+            generating ||
+            (!isProductOnly && !modelId) ||
+            !productId ||
+            scene.trim().length < 8
+          }
         >
           {generating ? (
             <>

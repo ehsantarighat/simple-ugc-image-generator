@@ -25,7 +25,7 @@ export interface BuildVariationPromptArgs {
 
 export function buildVariationPrompt(args: BuildVariationPromptArgs): string {
   const { payload } = args;
-  const sections = [
+  const sections: string[] = [
     buildTaskBlock("approved_style_variation"),
     "",
     buildReferenceBlock({
@@ -34,11 +34,17 @@ export function buildVariationPrompt(args: BuildVariationPromptArgs): string {
       modelImageCount: args.modelImageCount,
       productImageCount: args.productImageCount,
     }),
-    "",
-    buildModelPreservationBlock({
-      rules: payload.modelPreservation,
-      model: payload.model,
-    }),
+  ];
+  if (payload.model) {
+    sections.push(
+      "",
+      buildModelPreservationBlock({
+        rules: payload.modelPreservation,
+        model: payload.model,
+      })
+    );
+  }
+  sections.push(
     "",
     buildProductPreservationBlock({
       rules: payload.productPreservation,
@@ -58,7 +64,7 @@ export function buildVariationPrompt(args: BuildVariationPromptArgs): string {
       shotType: payload.photography.shotType,
     }),
     "",
-    buildOutputIntentBlock("approved_style_variation"),
-  ];
+    buildOutputIntentBlock("approved_style_variation")
+  );
   return sections.join("\n");
 }

@@ -19,7 +19,41 @@ import {
 export type GenerationMode =
   | "ugc_composite_generation"
   | "image_refinement"
-  | "approved_style_variation";
+  | "approved_style_variation"
+  // Subject/style-aware modes from the content-scaling addendum.
+  | "product_only_studio_generation"
+  | "product_only_lifestyle_generation"
+  | "product_model_studio_generation"
+  // Pack-aware modes.
+  | "pack_anchor_generation"
+  | "pack_variation_generation";
+
+export type SubjectMode = "product_only" | "product_with_model";
+
+export type StyleMode = "studio" | "lifestyle" | "ugc" | "hybrid";
+
+export type OutputScope =
+  | "single_image"
+  | "few_variations"
+  | "multi_format_pack"
+  | "multi_concept_pack"
+  | "full_campaign_pack";
+
+export type PlatformTarget =
+  | "instagram_feed"
+  | "instagram_story"
+  | "tiktok"
+  | "meta_ads"
+  | "product_page"
+  | "marketplace_listing"
+  | "website_banner"
+  | "landing_page"
+  | "email_banner"
+  | "other";
+
+export type AnchorStrategy = "none" | "single_anchor" | "per_concept_anchor";
+
+export type PackType = "multi_format" | "multi_concept" | "campaign";
 
 export type AuthenticityLevel = (typeof AUTHENTICITY_LEVELS)[number];
 export type ProductProminence = (typeof PRODUCT_PROMINENCES)[number];
@@ -123,10 +157,26 @@ export interface ModelContext {
   description?: string | null;
 }
 
+export interface PackGenerationSpecification {
+  enabled: boolean;
+  packType?: PackType;
+  packIntent?: string;
+  selectedPlatforms: PlatformTarget[];
+  requestedAspectRatios: OutputAspectRatio[];
+  requestedConceptCount: number;
+  requestedVariationCount: number;
+  anchorStrategy: AnchorStrategy;
+}
+
 export interface StructuredGenerationPayload {
   mode: GenerationMode;
   goal: string;
-  model: ModelContext;
+  // Top-level project context from the content-scaling addendum.
+  subjectMode: SubjectMode;
+  styleMode: StyleMode;
+  outputScope: OutputScope;
+  // model may be absent when subjectMode === 'product_only'.
+  model: ModelContext | null;
   product: ProductContext;
   modelPreservation: ModelPreservationRules;
   productPreservation: ProductPreservationRules;
@@ -134,10 +184,51 @@ export interface StructuredGenerationPayload {
   photography: PhotographySpecification;
   output: OutputSpecification;
   negativeConstraints: PromptSafetyAndNegativeConstraints;
+  packGeneration?: PackGenerationSpecification;
   // Mode-specific fields ------------------------------------------------------
   refinementInstruction?: string;
   approvedImageNotes?: string;
+  // Set on pack_variation_generation jobs to drive ratio reframing.
+  targetAspectRatioOverride?: OutputAspectRatio;
+  targetPlatform?: PlatformTarget;
 }
+
+// ----------------------------------------------------------------------------
+// Constants used by the planner / validators.
+// ----------------------------------------------------------------------------
+
+export const ALL_PLATFORM_TARGETS: readonly PlatformTarget[] = [
+  "instagram_feed",
+  "instagram_story",
+  "tiktok",
+  "meta_ads",
+  "product_page",
+  "marketplace_listing",
+  "website_banner",
+  "landing_page",
+  "email_banner",
+  "other",
+] as const;
+
+export const ALL_STYLE_MODES: readonly StyleMode[] = [
+  "studio",
+  "lifestyle",
+  "ugc",
+  "hybrid",
+] as const;
+
+export const ALL_SUBJECT_MODES: readonly SubjectMode[] = [
+  "product_only",
+  "product_with_model",
+] as const;
+
+export const ALL_OUTPUT_SCOPES: readonly OutputScope[] = [
+  "single_image",
+  "few_variations",
+  "multi_format_pack",
+  "multi_concept_pack",
+  "full_campaign_pack",
+] as const;
 
 // ----------------------------------------------------------------------------
 // Defaults

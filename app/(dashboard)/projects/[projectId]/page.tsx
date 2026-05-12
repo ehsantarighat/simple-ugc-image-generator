@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { DeleteOwnerButton } from "@/components/shared/delete-owner-button";
 import { deleteProjectAction } from "@/lib/actions/projects";
 import { ProjectWorkspace } from "@/components/projects/project-workspace";
+import { PackPanel } from "@/components/generation/pack-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,7 @@ export default async function ProjectDetailPage({
     .from("projects")
     .select(
       `id, title, description, target_channel, selected_model_id, selected_product_id,
+       subject_mode, style_mode, output_scope, selected_platforms_json,
        updated_at, model:models(id, name), product:products(id, name)`
     )
     .eq("id", projectId)
@@ -27,19 +29,37 @@ export default async function ProjectDetailPage({
     .maybeSingle();
   if (!project) notFound();
 
-  const [{ data: models }, { data: products }, { data: requests }] = await Promise.all([
-    supabase.from("models").select("id, name").eq("user_id", user.id),
-    supabase.from("products").select("id, name").eq("user_id", user.id),
-    supabase
-      .from("generation_requests")
-      .select(
-        `id, status, error_message, raw_scene_prompt, controls_json, created_at,
-         images:generated_images(id, storage_path, is_favorite, parent_image_id, metadata_json, created_at)`
-      )
-      .eq("project_id", projectId)
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false }),
-  ]);
+  const [{ data: models }, { data: products }, { data: requests }, { data: packs }] =
+    await Promise.all([
+      supabase.from("models").select("id, name").eq("user_id", user.id),
+      supabase.from("products").select("id, name").eq("user_id", user.id),
+      supabase
+        .from("generation_requests")
+        .select(
+          `id, status, error_message, raw_scene_prompt, controls_json, created_at,
+           images:generated_images(id, storage_path, is_favorite, parent_image_id, metadata_json, created_at)`
+        )
+        .eq("project_id", projectId)
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("content_packs")
+        .select(
+          `id, title, pack_type, status, requested_ratios_json, selected_platforms_json,
+           created_at,
+           concepts:content_pack_concepts(id, title, status),
+           outputs:content_pack_outputs(id, role, target_aspect_ratio, target_platform,
+             image:generated_images(id, storage_path))`
+        )
+        .eq("project_id", projectId)
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false }),
+    ]);
+
+  const isPackScope =
+    project.output_scope === "multi_format_pack" ||
+    project.output_scope === "multi_concept_pack" ||
+    project.output_scope === "full_campaign_pack";
 
   return (
     <>
@@ -66,8 +86,31 @@ export default async function ProjectDetailPage({
         }
       />
 
+      {isPackScope && (
+        <div className="mb-8">
+          <PackPanel
+            projectId={project.id}
+            subjectMode={project.subject_mode as "product_only" | "product_with_model"}
+            styleMode={project.style_mode as "studio" | "lifestyle" | "ugc" | "hybrid"}
+            outputScope={project.output_scope as
+              | "multi_format_pack"
+              | "multi_concept_pack"
+              | "full_campaign_pack"}
+            initialPlatforms={(project.selected_platforms_json ?? []) as string[]}
+            modelId={project.selected_model_id}
+            productId={project.selected_product_id}
+            models={models ?? []}
+            products={products ?? []}
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            packs={(packs ?? []) as any}
+          />
+        </div>
+      )}
+
       <ProjectWorkspace
         projectId={project.id}
+        subjectMode={project.subject_mode as "product_only" | "product_with_model"}
+        styleMode={project.style_mode as "studio" | "lifestyle" | "ugc" | "hybrid"}
         initialModelId={project.selected_model_id}
         initialProductId={project.selected_product_id}
         models={models ?? []}

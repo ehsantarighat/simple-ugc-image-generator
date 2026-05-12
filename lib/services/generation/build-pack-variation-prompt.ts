@@ -1,63 +1,44 @@
 // ============================================================================
-// build-generation-prompt.ts
-// Composes the final natural-language prompt for the primary generation
-// modes (UGC composite + product-only studio/lifestyle + product+model studio
-// + pack anchor). Picks blocks based on subjectMode and styleMode.
+// build-pack-variation-prompt.ts
+// Composes the prompt for pack_variation_generation: re-shoot an approved
+// anchor into a new aspect ratio (and/or platform). The anchor goes first in
+// the image attachment order.
 // ============================================================================
 
-import type {
-  GenerationMode,
-  StructuredGenerationPayload,
-} from "@/lib/services/generation/payload-schema";
+import type { StructuredGenerationPayload } from "@/lib/services/generation/payload-schema";
 import { buildTaskBlock } from "@/lib/services/generation/prompt-blocks/task-block";
 import { buildReferenceBlock } from "@/lib/services/generation/prompt-blocks/reference-block";
 import { buildSubjectModeBlock } from "@/lib/services/generation/prompt-blocks/subject-mode-block";
 import { buildStyleModeBlock } from "@/lib/services/generation/prompt-blocks/style-mode-block";
 import { buildModelPreservationBlock } from "@/lib/services/generation/prompt-blocks/model-preservation-block";
 import { buildProductPreservationBlock } from "@/lib/services/generation/prompt-blocks/product-preservation-block";
-import { buildSceneBlock } from "@/lib/services/generation/prompt-blocks/scene-block";
-import { buildPhotographyBlock } from "@/lib/services/generation/prompt-blocks/photography-block";
-import { buildAuthenticityBlock } from "@/lib/services/generation/prompt-blocks/authenticity-block";
-import {
-  buildCompositionPriorityBlock,
-  buildRealismBlock,
-} from "@/lib/services/generation/prompt-blocks/realism-block";
+import { buildRatioReframeBlock } from "@/lib/services/generation/prompt-blocks/ratio-reframe-block";
 import { buildNegativeConstraintBlock } from "@/lib/services/generation/prompt-blocks/negative-constraints-block";
 import { buildOutputIntentBlock } from "@/lib/services/generation/prompt-blocks/output-intent-block";
 
-export interface BuildGenerationPromptArgs {
+export interface BuildPackVariationPromptArgs {
   payload: StructuredGenerationPayload;
   modelImageCount: number;
   productImageCount: number;
 }
 
-// Set of modes that share this builder. Each pulls the same blocks but the
-// style/subject/output-intent blocks vary by payload.
-const COMPATIBLE_MODES: Readonly<Set<GenerationMode>> = new Set<GenerationMode>([
-  "ugc_composite_generation",
-  "product_only_studio_generation",
-  "product_only_lifestyle_generation",
-  "product_model_studio_generation",
-  "pack_anchor_generation",
-]);
-
-export function buildGenerationPrompt(args: BuildGenerationPromptArgs): string {
+export function buildPackVariationPrompt(args: BuildPackVariationPromptArgs): string {
   const { payload } = args;
-  if (!COMPATIBLE_MODES.has(payload.mode)) {
+  if (payload.mode !== "pack_variation_generation") {
     throw new Error(
-      `buildGenerationPrompt does not support mode "${payload.mode}". Use a mode-specific builder.`
+      `buildPackVariationPrompt called with mode "${payload.mode}". Expected pack_variation_generation.`
     );
   }
-
   const isProductOnly = payload.subjectMode === "product_only";
-  const sections: string[] = [];
+  const targetRatio = payload.output.aspectRatio;
 
+  const sections: string[] = [];
   sections.push(buildTaskBlock(payload.mode));
   sections.push("");
   sections.push(
     buildReferenceBlock({
       mode: payload.mode,
-      hasSourceImage: false,
+      hasSourceImage: true,
       modelImageCount: isProductOnly ? 0 : args.modelImageCount,
       productImageCount: args.productImageCount,
     })
@@ -84,20 +65,14 @@ export function buildGenerationPrompt(args: BuildGenerationPromptArgs): string {
       product: payload.product,
     })
   );
-  sections.push("");
-  sections.push(buildSceneBlock(payload.scene));
-  sections.push("");
-  sections.push(buildPhotographyBlock(payload.photography));
-
-  // Authenticity block is most meaningful for UGC and lifestyle; we include
-  // it everywhere because the realism framing helps studio mode too.
-  sections.push("");
-  sections.push(buildAuthenticityBlock(payload.photography));
 
   sections.push("");
-  sections.push(buildRealismBlock());
-  sections.push("");
-  sections.push(buildCompositionPriorityBlock());
+  sections.push(
+    buildRatioReframeBlock({
+      targetRatio,
+      targetPlatform: payload.targetPlatform,
+    })
+  );
 
   sections.push("");
   sections.push(
@@ -108,9 +83,7 @@ export function buildGenerationPrompt(args: BuildGenerationPromptArgs): string {
       shotType: payload.photography.shotType,
     })
   );
-
   sections.push("");
-  sections.push(buildOutputIntentBlock(payload.mode));
-
+  sections.push(buildOutputIntentBlock("approved_style_variation"));
   return sections.join("\n");
 }

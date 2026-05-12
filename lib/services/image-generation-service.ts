@@ -17,14 +17,27 @@ import {
   selectProductReferences,
 } from "@/lib/services/generation/reference-image-selection";
 import type { PhotographyControls, GenerationStatus } from "@/types";
+import type {
+  GenerationMode,
+  StyleMode,
+  SubjectMode,
+} from "@/lib/services/generation/payload-schema";
 
 export interface RunGenerationArgs {
   userId: string;
   projectId: string;
-  modelId: string;
+  // modelId is required when subjectMode === product_with_model.
+  modelId: string | null;
   productId: string;
   scenePrompt: string;
   controls: PhotographyControls;
+  subjectMode: SubjectMode;
+  styleMode: StyleMode;
+  // Optional generation-mode override. If omitted, derived from subject+style.
+  modeOverride?: GenerationMode;
+  // For pack jobs.
+  packId?: string;
+  conceptId?: string;
 }
 
 export interface RunGenerationResult {
@@ -34,47 +47,65 @@ export interface RunGenerationResult {
   errorMessage?: string;
 }
 
-// ----------------------------------------------------------------------------
-// Mode A — ugc_composite_generation
-//
-// Orchestrates the pipeline. The actual prompt and request shape are built by
-// pure functions in lib/services/generation/. This function only sequences
-// DB writes, storage uploads, and the single OpenAI call.
-// ----------------------------------------------------------------------------
+// Pick the right top-level generation mode from subject + style choices.
+export function deriveGenerationMode(args: {
+  subjectMode: SubjectMode;
+  styleMode: StyleMode;
+}): GenerationMode {
+  if (args.subjectMode === "product_only") {
+    return args.styleMode === "studio"
+      ? "product_only_studio_generation"
+      : "product_only_lifestyle_generation";
+  }
+  // product_with_model
+  if (args.styleMode === "studio") return "product_model_studio_generation";
+  // lifestyle / ugc / hybrid with a model — keep the existing UGC composite path.
+  return "ugc_composite_generation";
+}
+
 export async function runGeneration(
   args: RunGenerationArgs
 ): Promise<RunGenerationResult> {
   const env = serverEnv();
   const svc = getSupabaseServiceClient();
 
-  // 1. Load model + product + reference image rows -------------------------
-  const [{ data: model, error: modelErr }, { data: product, error: productErr }] =
-    await Promise.all([
-      svc
-        .from("models")
-        .select("id, name, description, model_images(storage_path, sort_order)")
-        .eq("id", args.modelId)
-        .eq("user_id", args.userId)
-        .single(),
-      svc
-        .from("products")
-        .select(
-          "id, name, brand_name, category, description, preservation_rules_json, product_images(storage_path, sort_order)"
-        )
-        .eq("id", args.productId)
-        .eq("user_id", args.userId)
-        .single(),
-    ]);
-  if (modelErr || !model) throw new Error("Model not found or not owned by user");
-  if (productErr || !product) throw new Error("Product not found or not owned by user");
+  const mode = args.modeOverride ?? deriveGenerationMode(args);
 
+  // -- Load model (optional) + product + reference rows ---------------------
   type ImgRow = { storage_path: string; sort_order: number };
-  const modelImages = selectModelReferences((model.model_images ?? []) as ImgRow[]);
-  const productImages = selectProductReferences((product.product_images ?? []) as ImgRow[]);
-  if (modelImages.length === 0) throw new Error("Model has no reference images");
+  let model: { id: string; name: string; description: string | null } | null = null;
+  let modelImages: ImgRow[] = [];
+
+  if (args.subjectMode === "product_with_model") {
+    if (!args.modelId) {
+      throw new Error("modelId is required when subjectMode === 'product_with_model'");
+    }
+    const { data, error } = await svc
+      .from("models")
+      .select("id, name, description, model_images(storage_path, sort_order)")
+      .eq("id", args.modelId)
+      .eq("user_id", args.userId)
+      .single();
+    if (error || !data) throw new Error("Model not found or not owned by user");
+    model = { id: data.id, name: data.name, description: data.description };
+    modelImages = selectModelReferences((data.model_images ?? []) as ImgRow[]);
+    if (modelImages.length === 0) throw new Error("Model has no reference images");
+  }
+
+  const { data: product, error: productErr } = await svc
+    .from("products")
+    .select(
+      "id, name, brand_name, category, description, preservation_rules_json, product_images(storage_path, sort_order)"
+    )
+    .eq("id", args.productId)
+    .eq("user_id", args.userId)
+    .single();
+  if (productErr || !product) throw new Error("Product not found or not owned by user");
+  const productImages = selectProductReferences(
+    (product.product_images ?? []) as ImgRow[]
+  );
   if (productImages.length === 0) throw new Error("Product has no reference images");
 
-  // 2. Build structured payload + prompt -----------------------------------
   const preservationNotes =
     typeof product.preservation_rules_json === "object" &&
     product.preservation_rules_json !== null &&
@@ -82,11 +113,29 @@ export async function runGeneration(
       ? ((product.preservation_rules_json as { notes?: string }).notes ?? null)
       : null;
 
+  // -- Look up project context (output scope) for the payload --------------
+  const { data: project } = await svc
+    .from("projects")
+    .select("output_scope")
+    .eq("id", args.projectId)
+    .eq("user_id", args.userId)
+    .single();
+  const outputScope = (project?.output_scope ?? "single_image") as
+    | "single_image"
+    | "few_variations"
+    | "multi_format_pack"
+    | "multi_concept_pack"
+    | "full_campaign_pack";
+
+  // -- Build payload + prompt ----------------------------------------------
   const payload = buildStructuredPayload({
-    mode: "ugc_composite_generation",
+    mode,
     scenePrompt: args.scenePrompt,
     controls: args.controls,
-    model: { name: model.name, description: model.description },
+    subjectMode: args.subjectMode,
+    styleMode: args.styleMode,
+    outputScope,
+    model: model ? { name: model.name, description: model.description } : null,
     product: {
       name: product.name,
       brandName: product.brand_name,
@@ -101,17 +150,20 @@ export async function runGeneration(
     productImageCount: productImages.length,
   });
 
-  // 3. Persist a `generating` request row ---------------------------------
+  // -- Persist a `generating` request row ----------------------------------
   const { data: requestRow, error: insertErr } = await svc
     .from("generation_requests")
     .insert({
       project_id: args.projectId,
       user_id: args.userId,
-      model_id: args.modelId,
+      model_id: model?.id ?? null,
       product_id: args.productId,
       raw_scene_prompt: args.scenePrompt,
       structured_payload_json: payload,
       controls_json: args.controls,
+      generation_mode: mode,
+      pack_id: args.packId ?? null,
+      concept_id: args.conceptId ?? null,
       status: "generating" as GenerationStatus,
     })
     .select("id")
@@ -121,9 +173,8 @@ export async function runGeneration(
   }
   const requestId = requestRow.id as string;
 
-  // 4. Fetch reference bytes, call OpenAI, persist outputs ----------------
   try {
-    const refModel = await Promise.all(
+    const refModel: Uploadable[] = await Promise.all(
       modelImages.map(async (i, idx) => {
         const blob = await downloadAsset(i.storage_path);
         return toFile(Buffer.from(await blob.arrayBuffer()), `model-${idx}.jpg`, {
@@ -131,7 +182,7 @@ export async function runGeneration(
         });
       })
     );
-    const refProduct = await Promise.all(
+    const refProduct: Uploadable[] = await Promise.all(
       productImages.map(async (i, idx) => {
         const blob = await downloadAsset(i.storage_path);
         return toFile(Buffer.from(await blob.arrayBuffer()), `product-${idx}.jpg`, {
@@ -170,7 +221,10 @@ export async function runGeneration(
           metadata_json: {
             size: payload.output.size,
             model: env.OPENAI_IMAGE_MODEL,
-            mode: payload.mode,
+            generation_mode: mode,
+            subject_mode: args.subjectMode,
+            style_mode: args.styleMode,
+            output_scope: outputScope,
             variation_index: i,
             product_category: payload.product.inferredCategory,
             product_interaction: payload.scene.productInteraction,

@@ -23,18 +23,8 @@ export async function GET(
   }
   try {
     const result = await exportPackAsZip({ userId: user.id, contentPackId: id });
-    // Wrap in a Blob — unambiguously valid BodyInit in next@15.5's strict types.
-    const body = new Blob(
-      [
-        new Uint8Array(
-          result.bytes.buffer,
-          result.bytes.byteOffset,
-          result.bytes.byteLength
-        ),
-      ],
-      { type: "application/zip" }
-    );
-    return new NextResponse(body, {
+    // result.bytes is a plain ArrayBuffer — accepted by NextResponse's BodyInit.
+    return new NextResponse(result.bytes, {
       headers: {
         "Content-Type": "application/zip",
         "Content-Disposition": `attachment; filename="${result.filename}"`,

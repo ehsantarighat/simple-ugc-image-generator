@@ -47,7 +47,7 @@ interface ZipEntry {
   offset: number;
 }
 
-export function buildZipBuffer(entries: { name: string; data: Uint8Array }[]): Buffer {
+export function buildZipBuffer(entries: { name: string; data: Uint8Array }[]): ArrayBuffer {
   const now = new Date();
   const dt = dosTime(now);
   const dd = dosDate(now);
@@ -120,7 +120,10 @@ export function buildZipBuffer(entries: { name: string; data: Uint8Array }[]): B
   dv.setUint16(20, 0, true);
 
   const total = offset + centralSize + eocd.length;
-  const out = new Uint8Array(total);
+  // Allocate a real ArrayBuffer (not SharedArrayBuffer) so the caller gets a
+  // type that NextResponse / Blob will accept cleanly under strict types.
+  const ab = new ArrayBuffer(total);
+  const out = new Uint8Array(ab);
   let cur = 0;
   for (const c of localChunks) {
     out.set(c, cur);
@@ -131,7 +134,7 @@ export function buildZipBuffer(entries: { name: string; data: Uint8Array }[]): B
     cur += c.length;
   }
   out.set(eocd, cur);
-  return Buffer.from(out);
+  return ab;
 }
 
 // --- Pack export -----------------------------------------------------------
@@ -145,7 +148,7 @@ function safe(name: string): string {
 }
 
 export interface ExportPackResult {
-  bytes: Buffer;
+  bytes: ArrayBuffer;
   filename: string;
 }
 

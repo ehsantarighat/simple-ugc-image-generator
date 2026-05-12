@@ -1,35 +1,30 @@
-# --- Python ------------------------------------------------------------------
-__pycache__/
-*.py[cod]
-*.egg-info/
-.eggs/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.coverage
-htmlcov/
-.venv/
-venv/
-env/
-
-# --- Node / Frontend ---------------------------------------------------------
+# --- Node / Next ------------------------------------------------------------
 node_modules/
-frontend/dist/
-frontend/.vite/
-.npm/
+.next/
+out/
+build/
+dist/
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
 
-# --- Built frontend copied into the backend at deploy time -------------------
-backend/app/static/*
-!backend/app/static/.gitkeep
-
-# --- Environment -------------------------------------------------------------
+# --- Env --------------------------------------------------------------------
 .env
 .env.local
 .env.*.local
 
-# --- Editor / OS -------------------------------------------------------------
+# --- TS ---------------------------------------------------------------------
+*.tsbuildinfo
+next-env.d.ts
+
+# --- Editor / OS ------------------------------------------------------------
 .DS_Store
 .idea/
 .vscode/
 *.swp
+
+# --- Coverage / cache -------------------------------------------------------
+coverage/
+.cache/

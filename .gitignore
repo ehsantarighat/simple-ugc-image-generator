@@ -1,0 +1,35 @@
+# --- Python ------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+env/
+
+# --- Node / Frontend ---------------------------------------------------------
+node_modules/
+frontend/dist/
+frontend/.vite/
+.npm/
+*.log
+
+# --- Built frontend copied into the backend at deploy time -------------------
+backend/app/static/*
+!backend/app/static/.gitkeep
+
+# --- Environment -------------------------------------------------------------
+.env
+.env.local
+.env.*.local
+
+# --- Editor / OS -------------------------------------------------------------
+.DS_Store
+.idea/
+.vscode/
+*.swp

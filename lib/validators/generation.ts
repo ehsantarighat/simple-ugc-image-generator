@@ -35,6 +35,12 @@ export const refinementStartSchema = z.object({
   refinementPrompt: z.string().min(3).max(500),
 });
 
+export const variationStartSchema = z.object({
+  approvedImageId: z.string().uuid(),
+  variationRequest: z.string().max(500).optional().nullable(),
+  count: z.coerce.number().int().min(1).max(4).optional(),
+});
+
 export const targetChannelSchema = z.enum([
   "instagram",
   "tiktok",
@@ -59,3 +65,4 @@ export const projectUpdateSchema = projectCreateSchema.extend({
 export type PhotographyControlsInput = z.infer<typeof photographyControlsSchema>;
 export type GenerationStartInput = z.infer<typeof generationStartSchema>;
 export type RefinementStartInput = z.infer<typeof refinementStartSchema>;
+export type VariationStartInput = z.infer<typeof variationStartSchema>;

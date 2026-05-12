@@ -31,7 +31,7 @@ import {
   LIGHTING_LABELS,
   AUTHENTICITY_LABELS,
   PRODUCT_PROMINENCE_LABELS,
-} from "@/lib/services/generation-payload-builder";
+} from "@/lib/services/generation/control-mappings";
 
 interface Props {
   value: PhotographyControls;

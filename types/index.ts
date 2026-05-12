@@ -85,7 +85,7 @@ export interface GenerationRequestRecord {
   model_id: string;
   product_id: string;
   raw_scene_prompt: string;
-  structured_payload_json: StructuredGenerationPayload;
+  structured_payload_json: Record<string, unknown>;
   controls_json: PhotographyControls;
   status: GenerationStatus;
   error_message: string | null;
@@ -102,7 +102,7 @@ export interface GeneratedImageRecord {
   storage_path: string;
   prompt_used: string;
   metadata_json: Record<string, unknown> | null;
-  review_json: QualityReview | null;
+  review_json: Record<string, unknown> | null;
   is_favorite: boolean;
   created_at: string;
 }
@@ -113,7 +113,7 @@ export interface RevisionRequestRecord {
   generation_request_id: string | null;
   user_id: string;
   refinement_prompt: string;
-  structured_payload_json: StructuredGenerationPayload;
+  structured_payload_json: Record<string, unknown>;
   status: GenerationStatus;
   error_message: string | null;
   created_at: string;
@@ -200,47 +200,9 @@ export interface PhotographyControls {
   numberOfVariations: number;
 }
 
-// --- Structured generation payload ------------------------------------------
-
-export interface StructuredGenerationPayload {
-  goal: string;
-  scene: {
-    location?: string;
-    action?: string;
-    mood?: string;
-    description: string;
-  };
-  modelPreservation: {
-    priority: "high" | "critical";
-    instruction: string;
-  };
-  productPreservation: {
-    priority: "high" | "critical";
-    instruction: string;
-  };
-  photography: {
-    shotType: string;
-    cameraAngle: string;
-    lensType: string;
-    framing: string;
-    lighting: string;
-    authenticityLevel: string;
-    productProminence: string;
-  };
-  output: {
-    aspectRatio: string;
-    variations: number;
-  };
-  negativeConstraints: string[];
-}
-
-export interface QualityReview {
-  modelSimilarityScore?: number;
-  productFidelityScore?: number;
-  realismScore?: number;
-  promptMatchScore?: number;
-  notes?: string;
-}
+// The structured generation payload type lives in
+// lib/services/generation/payload-schema.ts. The DB column is JSON, so the
+// row types above keep it as a generic object.
 
 // --- Joined views used by the UI --------------------------------------------
 

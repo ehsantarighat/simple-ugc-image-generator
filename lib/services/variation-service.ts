@@ -9,7 +9,7 @@ import {
   uploadServerBytes,
 } from "@/lib/supabase/storage";
 import { buildStructuredPayload } from "@/lib/services/generation/build-structured-payload";
-import { buildRefinementPrompt } from "@/lib/services/generation/build-refinement-prompt";
+import { buildVariationPrompt } from "@/lib/services/generation/build-variation-prompt";
 import { callOpenAIImageEdit } from "@/lib/services/generation/openai-image-edit";
 import {
   selectModelReferences,
@@ -17,50 +17,45 @@ import {
 } from "@/lib/services/generation/reference-image-selection";
 import type { GenerationStatus, PhotographyControls } from "@/types";
 
-export interface RunRefinementArgs {
+export interface RunVariationArgs {
   userId: string;
-  sourceImageId: string;
-  refinementPrompt: string;
+  approvedImageId: string; // generated_images.id of the user-approved output
+  variationRequest?: string | null;
+  count?: number; // 1-4, default 3
 }
 
-export interface RunRefinementResult {
-  revisionRequestId: string;
-  status: GenerationStatus;
+export interface RunVariationResult {
   generatedImageIds: string[];
+  status: GenerationStatus;
   errorMessage?: string;
 }
 
 // ----------------------------------------------------------------------------
-// Mode B — image_refinement.
+// Mode C — approved_style_variation.
 //
-// Re-runs the pipeline with the source image as the first reference, plus a
-// reduced set of original model/product refs, and an intent-aware prompt.
-// Refined outputs are stored as child generated_images rows with
-// parent_image_id pointing back to the source.
+// Takes an approved generated image and produces N visually-consistent
+// variations. Outputs are stored as child generated_images rows linked to
+// the approved image via parent_image_id.
 // ----------------------------------------------------------------------------
-export async function runRefinement(
-  args: RunRefinementArgs
-): Promise<RunRefinementResult> {
+export async function runVariation(args: RunVariationArgs): Promise<RunVariationResult> {
   const env = serverEnv();
   const svc = getSupabaseServiceClient();
+  const desiredCount = Math.max(1, Math.min(4, args.count ?? 3));
 
-  // Pull source image + parent request --------------------------------------
-  const { data: source, error: sourceErr } = await svc
+  const { data: approved, error: approvedErr } = await svc
     .from("generated_images")
     .select(
       `id, storage_path, project_id, generation_request_id,
        request:generation_requests(id, model_id, product_id, controls_json, raw_scene_prompt)`
     )
-    .eq("id", args.sourceImageId)
+    .eq("id", args.approvedImageId)
     .eq("user_id", args.userId)
     .single();
-  if (sourceErr || !source) throw new Error("Source image not found.");
-  const reqRow = Array.isArray(source.request) ? source.request[0] : source.request;
-  if (!reqRow) throw new Error("Source request missing.");
+  if (approvedErr || !approved) throw new Error("Approved image not found.");
+  const reqRow = Array.isArray(approved.request) ? approved.request[0] : approved.request;
+  if (!reqRow) throw new Error("Approved image is missing its parent request.");
 
   const controls = reqRow.controls_json as PhotographyControls;
-
-  // Pull model + product + their references --------------------------------
   const [{ data: model }, { data: product }] = await Promise.all([
     svc
       .from("models")
@@ -80,8 +75,6 @@ export async function runRefinement(
   if (!model || !product) throw new Error("Source model or product missing.");
 
   type ImgRow = { storage_path: string; sort_order: number };
-  // Use a tighter cap on references for refinement (3 each) so the source
-  // image dominates the visual anchor — per spec section 13.
   const modelImages = selectModelReferences((model.model_images ?? []) as ImgRow[], 3);
   const productImages = selectProductReferences(
     (product.product_images ?? []) as ImgRow[],
@@ -96,7 +89,7 @@ export async function runRefinement(
       : null;
 
   const payload = buildStructuredPayload({
-    mode: "image_refinement",
+    mode: "approved_style_variation",
     scenePrompt: reqRow.raw_scene_prompt,
     controls,
     model: { name: model.name, description: model.description },
@@ -107,41 +100,21 @@ export async function runRefinement(
       description: product.description,
       preservationNotes,
     },
-    refinementInstruction: args.refinementPrompt,
+    approvedImageNotes: args.variationRequest ?? undefined,
   });
 
-  const prompt = buildRefinementPrompt({
+  const prompt = buildVariationPrompt({
     payload,
-    refinementRequest: args.refinementPrompt,
-    hasSourceImage: true,
+    variationRequest: args.variationRequest,
     modelImageCount: modelImages.length,
     productImageCount: productImages.length,
   });
 
-  // Persist a revision_requests row ----------------------------------------
-  const { data: revRow, error: revErr } = await svc
-    .from("revision_requests")
-    .insert({
-      source_generated_image_id: source.id,
-      generation_request_id: reqRow.id,
-      user_id: args.userId,
-      refinement_prompt: args.refinementPrompt,
-      structured_payload_json: payload,
-      status: "generating" as GenerationStatus,
-    })
-    .select("id")
-    .single();
-  if (revErr || !revRow) {
-    throw new Error(`Failed to create revision request: ${revErr?.message}`);
-  }
-  const revisionRequestId = revRow.id as string;
-
   try {
-    // Source image + model + product refs, in that order.
-    const sourceBlob = await downloadAsset(source.storage_path);
+    const sourceBlob = await downloadAsset(approved.storage_path);
     const sourceFile = await toFile(
       Buffer.from(await sourceBlob.arrayBuffer()),
-      "previous-output.png",
+      "approved.png",
       { type: "image/png" }
     );
     const refModel = await Promise.all(
@@ -160,11 +133,9 @@ export async function runRefinement(
         });
       })
     );
-
-    // Refinements default to 1 output to keep iteration tight.
-    const output = { ...payload.output, numberOfVariations: 1 };
-
     const allRefs: Uploadable[] = [sourceFile, ...refModel, ...refProduct];
+
+    const output = { ...payload.output, numberOfVariations: desiredCount };
     const { images: pngBuffers } = await callOpenAIImageEdit({
       model: env.OPENAI_IMAGE_MODEL,
       prompt,
@@ -174,11 +145,11 @@ export async function runRefinement(
 
     const insertedIds: string[] = [];
     for (let i = 0; i < pngBuffers.length; i++) {
-      const filename = `${Date.now()}-${i}.png`;
+      const filename = `${Date.now()}-var-${i}.png`;
       const storagePath = buildStoragePath(
         "revisions",
         args.userId,
-        [source.project_id, revisionRequestId],
+        [approved.project_id, reqRow.id],
         filename
       );
       await uploadServerBytes(storagePath, pngBuffers[i], "image/png");
@@ -187,17 +158,17 @@ export async function runRefinement(
         .from("generated_images")
         .insert({
           generation_request_id: reqRow.id,
-          project_id: source.project_id,
+          project_id: approved.project_id,
           user_id: args.userId,
-          parent_image_id: source.id,
+          parent_image_id: approved.id,
           storage_path: storagePath,
           prompt_used: prompt,
           metadata_json: {
             size: output.size,
             model: env.OPENAI_IMAGE_MODEL,
-            mode: "image_refinement",
-            refinement_prompt: args.refinementPrompt,
-            revision_request_id: revisionRequestId,
+            mode: "approved_style_variation",
+            variation_index: i,
+            variation_request: args.variationRequest ?? null,
           },
         })
         .select("id")
@@ -205,26 +176,15 @@ export async function runRefinement(
       if (row) insertedIds.push(row.id as string);
     }
 
-    await svc
-      .from("revision_requests")
-      .update({ status: "completed" as GenerationStatus })
-      .eq("id", revisionRequestId);
-
     return {
-      revisionRequestId,
-      status: "completed",
       generatedImageIds: insertedIds,
+      status: "completed",
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    await svc
-      .from("revision_requests")
-      .update({ status: "failed" as GenerationStatus, error_message: msg })
-      .eq("id", revisionRequestId);
     return {
-      revisionRequestId,
-      status: "failed",
       generatedImageIds: [],
+      status: "failed",
       errorMessage: msg,
     };
   }

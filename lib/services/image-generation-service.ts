@@ -1,7 +1,6 @@
 import "server-only";
 
-import { toFile } from "openai/uploads";
-import { getOpenAIClient } from "@/lib/openai/client";
+import { toFile, type Uploadable } from "openai/uploads";
 import { serverEnv } from "@/lib/env";
 import { getSupabaseServiceClient } from "@/lib/supabase/service";
 import {
@@ -10,16 +9,14 @@ import {
   downloadAsset,
   uploadServerBytes,
 } from "@/lib/supabase/storage";
+import { buildStructuredPayload } from "@/lib/services/generation/build-structured-payload";
+import { buildGenerationPrompt } from "@/lib/services/generation/build-generation-prompt";
+import { callOpenAIImageEdit } from "@/lib/services/generation/openai-image-edit";
 import {
-  buildStructuredPayload,
-  renderPromptFromPayload,
-  aspectRatioToImageSize,
-} from "@/lib/services/generation-payload-builder";
-import type {
-  PhotographyControls,
-  StructuredGenerationPayload,
-  GenerationStatus,
-} from "@/types";
+  selectModelReferences,
+  selectProductReferences,
+} from "@/lib/services/generation/reference-image-selection";
+import type { PhotographyControls, GenerationStatus } from "@/types";
 
 export interface RunGenerationArgs {
   userId: string;
@@ -37,19 +34,20 @@ export interface RunGenerationResult {
   errorMessage?: string;
 }
 
-// Loads model + product + their image rows, builds the payload, sends the
-// request to GPT Image 2, uploads each output to storage, persists rows.
+// ----------------------------------------------------------------------------
+// Mode A — ugc_composite_generation
 //
-// Returns immediately with a request id once everything is queued. For MVP
-// we run it inline (no queue). The status lifecycle is still respected so
-// a worker can be added later without touching the public surface.
+// Orchestrates the pipeline. The actual prompt and request shape are built by
+// pure functions in lib/services/generation/. This function only sequences
+// DB writes, storage uploads, and the single OpenAI call.
+// ----------------------------------------------------------------------------
 export async function runGeneration(
   args: RunGenerationArgs
 ): Promise<RunGenerationResult> {
   const env = serverEnv();
   const svc = getSupabaseServiceClient();
 
-  // 1. Load model + product + reference image paths -------------------------
+  // 1. Load model + product + reference image rows -------------------------
   const [{ data: model, error: modelErr }, { data: product, error: productErr }] =
     await Promise.all([
       svc
@@ -67,20 +65,16 @@ export async function runGeneration(
         .eq("user_id", args.userId)
         .single(),
     ]);
-
   if (modelErr || !model) throw new Error("Model not found or not owned by user");
   if (productErr || !product) throw new Error("Product not found or not owned by user");
 
   type ImgRow = { storage_path: string; sort_order: number };
-  const modelImages = (model.model_images ?? []) as ImgRow[];
-  const productImages = (product.product_images ?? []) as ImgRow[];
-  modelImages.sort((a, b) => a.sort_order - b.sort_order);
-  productImages.sort((a, b) => a.sort_order - b.sort_order);
-
+  const modelImages = selectModelReferences((model.model_images ?? []) as ImgRow[]);
+  const productImages = selectProductReferences((product.product_images ?? []) as ImgRow[]);
   if (modelImages.length === 0) throw new Error("Model has no reference images");
   if (productImages.length === 0) throw new Error("Product has no reference images");
 
-  // 2. Build payload --------------------------------------------------------
+  // 2. Build structured payload + prompt -----------------------------------
   const preservationNotes =
     typeof product.preservation_rules_json === "object" &&
     product.preservation_rules_json !== null &&
@@ -88,21 +82,26 @@ export async function runGeneration(
       ? ((product.preservation_rules_json as { notes?: string }).notes ?? null)
       : null;
 
-  const payload: StructuredGenerationPayload = buildStructuredPayload({
+  const payload = buildStructuredPayload({
+    mode: "ugc_composite_generation",
     scenePrompt: args.scenePrompt,
     controls: args.controls,
     model: { name: model.name, description: model.description },
     product: {
       name: product.name,
-      brand_name: product.brand_name,
+      brandName: product.brand_name,
       category: product.category,
       description: product.description,
-      preservation_notes: preservationNotes,
+      preservationNotes,
     },
   });
-  const prompt = renderPromptFromPayload(payload);
+  const prompt = buildGenerationPrompt({
+    payload,
+    modelImageCount: modelImages.length,
+    productImageCount: productImages.length,
+  });
 
-  // 3. Insert generation_requests row in `generating` state -----------------
+  // 3. Persist a `generating` request row ---------------------------------
   const { data: requestRow, error: insertErr } = await svc
     .from("generation_requests")
     .insert({
@@ -120,14 +119,12 @@ export async function runGeneration(
   if (insertErr || !requestRow) {
     throw new Error(`Failed to create generation request: ${insertErr?.message}`);
   }
-
   const requestId = requestRow.id as string;
 
-  // 4. Fetch reference bytes from storage. We cap at 5 + 5 to keep the
-  //    multipart payload reasonable.
+  // 4. Fetch reference bytes, call OpenAI, persist outputs ----------------
   try {
     const refModel = await Promise.all(
-      modelImages.slice(0, 5).map(async (i, idx) => {
+      modelImages.map(async (i, idx) => {
         const blob = await downloadAsset(i.storage_path);
         return toFile(Buffer.from(await blob.arrayBuffer()), `model-${idx}.jpg`, {
           type: "image/jpeg",
@@ -135,37 +132,24 @@ export async function runGeneration(
       })
     );
     const refProduct = await Promise.all(
-      productImages.slice(0, 5).map(async (i, idx) => {
+      productImages.map(async (i, idx) => {
         const blob = await downloadAsset(i.storage_path);
         return toFile(Buffer.from(await blob.arrayBuffer()), `product-${idx}.jpg`, {
           type: "image/jpeg",
         });
       })
     );
-    const allRefs = [...refModel, ...refProduct];
-    const size = aspectRatioToImageSize(args.controls.outputAspectRatio);
+    const allRefs: Uploadable[] = [...refModel, ...refProduct];
 
-    // 5. Call GPT Image 2 -------------------------------------------------
-    const client = getOpenAIClient();
-    const generation = await client.images.edit({
+    const { images: pngBuffers } = await callOpenAIImageEdit({
       model: env.OPENAI_IMAGE_MODEL,
-      image: allRefs,
       prompt,
-      size,
-      n: Math.max(1, Math.min(4, args.controls.numberOfVariations)),
+      images: allRefs,
+      output: payload.output,
     });
 
-    if (!generation.data || generation.data.length === 0) {
-      throw new Error("OpenAI returned no images");
-    }
-
-    // 6. Persist each output --------------------------------------------
     const insertedIds: string[] = [];
-    for (let i = 0; i < generation.data.length; i++) {
-      const out = generation.data[i];
-      const b64 = out.b64_json;
-      if (!b64) continue;
-      const bytes = Buffer.from(b64, "base64");
+    for (let i = 0; i < pngBuffers.length; i++) {
       const filename = `${Date.now()}-${i}.png`;
       const storagePath = buildStoragePath(
         "generated",
@@ -173,9 +157,9 @@ export async function runGeneration(
         [args.projectId, requestId],
         filename
       );
-      await uploadServerBytes(storagePath, bytes, "image/png");
+      await uploadServerBytes(storagePath, pngBuffers[i], "image/png");
 
-      const { data: row, error: rowErr } = await svc
+      const { data: row } = await svc
         .from("generated_images")
         .insert({
           generation_request_id: requestId,
@@ -184,14 +168,17 @@ export async function runGeneration(
           storage_path: storagePath,
           prompt_used: prompt,
           metadata_json: {
-            size,
+            size: payload.output.size,
             model: env.OPENAI_IMAGE_MODEL,
+            mode: payload.mode,
             variation_index: i,
+            product_category: payload.product.inferredCategory,
+            product_interaction: payload.scene.productInteraction,
           },
         })
         .select("id")
         .single();
-      if (!rowErr && row) insertedIds.push(row.id as string);
+      if (row) insertedIds.push(row.id as string);
     }
 
     await svc
@@ -219,7 +206,6 @@ export async function runGeneration(
   }
 }
 
-// Used by the route handler to poll status from the client.
 export async function getGenerationRequestStatus(
   userId: string,
   generationRequestId: string
@@ -235,5 +221,4 @@ export async function getGenerationRequestStatus(
   return data;
 }
 
-// Re-export for callers that need the bucket name.
 export { ASSETS_BUCKET };

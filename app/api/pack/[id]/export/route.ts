@@ -23,7 +23,13 @@ export async function GET(
   }
   try {
     const result = await exportPackAsZip({ userId: user.id, contentPackId: id });
-    return new NextResponse(result.bytes, {
+    // Cast Buffer → Uint8Array view so NextResponse's BodyInit overload is happy.
+    const body = new Uint8Array(
+      result.bytes.buffer,
+      result.bytes.byteOffset,
+      result.bytes.byteLength
+    );
+    return new NextResponse(body, {
       headers: {
         "Content-Type": "application/zip",
         "Content-Disposition": `attachment; filename="${result.filename}"`,

@@ -26,7 +26,55 @@ export type GenerationMode =
   | "product_model_studio_generation"
   // Pack-aware modes.
   | "pack_anchor_generation"
-  | "pack_variation_generation";
+  | "pack_variation_generation"
+  // Final unified spec — product reproduction at scale + ratio variant.
+  | "product_reproduction_generation"
+  | "ratio_variant_generation";
+
+// Top-level creation paths exposed to the user on the dashboard.
+export type CreationMode = "product_reproduction" | "ugc_model_product";
+
+// MVP routing hint. Stored on the project + payload; actual provider routing
+// uses this as one signal.
+export type QualityPriority = "economy" | "balanced" | "premium" | "auto";
+
+// 10 style presets for product-only reproduction (Mode A).
+export type ProductReproductionStyle =
+  | "studio_white_background"
+  | "studio_colored_background"
+  | "studio_tabletop"
+  | "flat_lay"
+  | "catalog_premium"
+  | "lifestyle_product_only"
+  | "shelf_scene"
+  | "desk_scene"
+  | "bathroom_scene"
+  | "minimal_brand_scene";
+
+export const ALL_CREATION_MODES: readonly CreationMode[] = [
+  "product_reproduction",
+  "ugc_model_product",
+] as const;
+
+export const ALL_QUALITY_PRIORITIES: readonly QualityPriority[] = [
+  "economy",
+  "balanced",
+  "premium",
+  "auto",
+] as const;
+
+export const ALL_PRODUCT_REPRODUCTION_STYLES: readonly ProductReproductionStyle[] = [
+  "studio_white_background",
+  "studio_colored_background",
+  "studio_tabletop",
+  "flat_lay",
+  "catalog_premium",
+  "lifestyle_product_only",
+  "shelf_scene",
+  "desk_scene",
+  "bathroom_scene",
+  "minimal_brand_scene",
+] as const;
 
 export type SubjectMode = "product_only" | "product_with_model";
 
@@ -171,10 +219,12 @@ export interface PackGenerationSpecification {
 export interface StructuredGenerationPayload {
   mode: GenerationMode;
   goal: string;
-  // Top-level project context from the content-scaling addendum.
+  // Top-level project context.
+  creationMode?: CreationMode;
   subjectMode: SubjectMode;
   styleMode: StyleMode;
   outputScope: OutputScope;
+  qualityPriority?: QualityPriority;
   // model may be absent when subjectMode === 'product_only'.
   model: ModelContext | null;
   product: ProductContext;
@@ -191,6 +241,11 @@ export interface StructuredGenerationPayload {
   // Set on pack_variation_generation jobs to drive ratio reframing.
   targetAspectRatioOverride?: OutputAspectRatio;
   targetPlatform?: PlatformTarget;
+  // Product-reproduction (Mode A) style selection.
+  stylePreset?: ProductReproductionStyle;
+  // Optional routing notes the registry/adapter may consume.
+  selectedProvider?: string;
+  routingContext?: Record<string, unknown>;
 }
 
 // ----------------------------------------------------------------------------

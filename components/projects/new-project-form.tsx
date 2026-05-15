@@ -80,22 +80,44 @@ const PLATFORM_OPTIONS: { value: PlatformTarget; label: string }[] = [
   { value: "other", label: "Other / custom" },
 ];
 
+type CreationMode = "product_reproduction" | "ugc_model_product";
+
 export function NewProjectForm({
   models,
   products,
+  initialMode = "ugc_model_product",
 }: {
   models: Option[];
   products: Option[];
+  initialMode?: CreationMode;
 }) {
   const [state, formAction, pending] = useActionState<ActionResult, FormData>(
     createProjectAction,
     null
   );
 
-  const [subjectMode, setSubjectMode] = useState<SubjectMode>("product_with_model");
-  const [styleMode, setStyleMode] = useState<StyleMode>("ugc");
+  const [creationMode, setCreationMode] = useState<CreationMode>(initialMode);
+  // When the user is in product_reproduction mode we lock subject_mode to
+  // product_only so the back-end persists a consistent shape.
+  const [subjectMode, setSubjectMode] = useState<SubjectMode>(
+    initialMode === "product_reproduction" ? "product_only" : "product_with_model"
+  );
+  const [styleMode, setStyleMode] = useState<StyleMode>(
+    initialMode === "product_reproduction" ? "studio" : "ugc"
+  );
   const [outputScope, setOutputScope] = useState<OutputScope>("single_image");
   const [platforms, setPlatforms] = useState<Set<PlatformTarget>>(new Set());
+
+  function onChangeCreationMode(m: CreationMode) {
+    setCreationMode(m);
+    if (m === "product_reproduction") {
+      setSubjectMode("product_only");
+      setStyleMode("studio");
+    } else {
+      setSubjectMode("product_with_model");
+      setStyleMode("ugc");
+    }
+  }
 
   function togglePlatform(p: PlatformTarget) {
     setPlatforms((prev) => {
@@ -108,12 +130,32 @@ export function NewProjectForm({
 
   return (
     <form action={formAction} className="space-y-8">
+      <input type="hidden" name="creation_mode" value={creationMode} />
       <input type="hidden" name="subject_mode" value={subjectMode} />
       <input type="hidden" name="style_mode" value={styleMode} />
       <input type="hidden" name="output_scope" value={outputScope} />
       {[...platforms].map((p) => (
         <input key={p} type="hidden" name="selected_platforms" value={p} />
       ))}
+
+      <Section title="Creation mode">
+        <CardGroup
+          options={[
+            {
+              value: "ugc_model_product",
+              title: "UGC with model + product",
+              body: "Realistic influencer-style content combining a model and a product.",
+            },
+            {
+              value: "product_reproduction",
+              title: "Recreate product photos",
+              body: "Reproduce a product across styles, ratios, and platforms — no model.",
+            },
+          ]}
+          value={creationMode}
+          onChange={(v) => onChangeCreationMode(v as CreationMode)}
+        />
+      </Section>
 
       {/* --- 1. Title + description ----------------------------------- */}
       <Section title="Project details">

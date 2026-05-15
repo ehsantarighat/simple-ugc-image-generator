@@ -33,6 +33,14 @@ const INTENT_TEXT: Record<GenerationMode, string> = {
     "FINAL OUTPUT INTENT:",
     "Produce a ratio-correct re-shoot of the anchor image suitable for the target platform.",
   ].join("\n"),
+  product_reproduction_generation: [
+    "FINAL OUTPUT INTENT:",
+    "Produce a commercial-grade product photograph in the requested presentation style, suitable for the chosen platform/ratio.",
+  ].join("\n"),
+  ratio_variant_generation: [
+    "FINAL OUTPUT INTENT:",
+    "Produce a high-quality, platform-ready re-composition of the approved concept for the requested aspect ratio.",
+  ].join("\n"),
 };
 
 export function buildOutputIntentBlock(mode: GenerationMode): string {

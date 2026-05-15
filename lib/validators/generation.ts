@@ -10,11 +10,24 @@ import {
   SHOT_TYPES,
 } from "@/types";
 import {
+  ALL_CREATION_MODES,
   ALL_OUTPUT_SCOPES,
   ALL_PLATFORM_TARGETS,
+  ALL_PRODUCT_REPRODUCTION_STYLES,
+  ALL_QUALITY_PRIORITIES,
   ALL_STYLE_MODES,
   ALL_SUBJECT_MODES,
 } from "@/lib/services/generation/payload-schema";
+
+export const creationModeSchema = z.enum(
+  ALL_CREATION_MODES as unknown as [string, ...string[]]
+);
+export const qualityPrioritySchema = z.enum(
+  ALL_QUALITY_PRIORITIES as unknown as [string, ...string[]]
+);
+export const productReproductionStyleSchema = z.enum(
+  ALL_PRODUCT_REPRODUCTION_STYLES as unknown as [string, ...string[]]
+);
 
 export const subjectModeSchema = z.enum(
   ALL_SUBJECT_MODES as unknown as [string, ...string[]]
@@ -44,6 +57,21 @@ export const packRunSchema = packPlanSchema.extend({
   productId: z.string().uuid(),
   title: z.string().min(1).max(120).optional(),
   description: z.string().max(600).optional().nullable(),
+});
+
+// Mode A — Product Reproduction.
+export const reproductionPlanSchema = z.object({
+  projectId: z.string().uuid(),
+  productId: z.string().uuid(),
+  styles: z.array(productReproductionStyleSchema).min(1).max(10),
+  selectedPlatforms: z.array(platformTargetSchema).optional().default([]),
+  selectedRatios: z
+    .array(z.enum(ASPECT_RATIOS))
+    .optional(),
+  generateAllFormats: z.boolean().optional().default(false),
+  scope: outputScopeSchema.default("single_image"),
+  qualityPriority: qualityPrioritySchema.optional().default("auto"),
+  intentNotes: z.string().max(600).optional().nullable(),
 });
 
 export const photographyControlsSchema = z.object({
@@ -95,6 +123,8 @@ export const projectCreateSchema = z.object({
   selected_model_id: z.string().uuid().optional().nullable(),
   selected_product_id: z.string().uuid().optional().nullable(),
   target_channel: targetChannelSchema.default("general"),
+  creation_mode: creationModeSchema.optional().default("ugc_model_product"),
+  quality_priority: qualityPrioritySchema.optional().default("auto"),
   subject_mode: subjectModeSchema.optional().default("product_with_model"),
   style_mode: styleModeSchema.optional().default("ugc"),
   output_scope: outputScopeSchema.optional().default("single_image"),
@@ -111,3 +141,4 @@ export type RefinementStartInput = z.infer<typeof refinementStartSchema>;
 export type VariationStartInput = z.infer<typeof variationStartSchema>;
 export type PackPlanInput = z.infer<typeof packPlanSchema>;
 export type PackRunInput = z.infer<typeof packRunSchema>;
+export type ReproductionPlanInput = z.infer<typeof reproductionPlanSchema>;

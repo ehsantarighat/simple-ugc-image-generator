@@ -3,7 +3,16 @@ import { requireUser } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, FolderKanban, User2, Box, Sparkles } from "lucide-react";
+import {
+  ArrowRight,
+  Plus,
+  FolderKanban,
+  User2,
+  Box,
+  Sparkles,
+  Camera,
+  ImageIcon,
+} from "lucide-react";
 import { SignedImage } from "@/components/shared/signed-image";
 import { formatRelativeTime } from "@/lib/utils";
 
@@ -37,17 +46,31 @@ export default async function DashboardPage() {
     <>
       <PageHeader
         title="Dashboard"
-        description="Welcome back. Quick start from here."
-        actions={
-          <Button asChild>
-            <Link href="/projects/new">
-              <Plus className="mr-1 h-4 w-4" /> New project
-            </Link>
-          </Button>
-        }
+        description="Pick a creation path or pick up where you left off."
       />
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      {/* ----- Two primary creation paths -------------------------------- */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <CreationCard
+          href="/projects/new?mode=product_reproduction"
+          icon={<Camera className="h-5 w-5" />}
+          eyebrow="Mode A"
+          title="Recreate Product Photos"
+          body="Upload a product photo and generate studio, flat-lay, lifestyle, and platform-ready versions in multiple formats."
+          cta="Start Mode A"
+        />
+        <CreationCard
+          href="/projects/new?mode=ugc_model_product"
+          icon={<ImageIcon className="h-5 w-5" />}
+          eyebrow="Mode B"
+          title="Create UGC Product Images"
+          body="Combine a model and a product to generate realistic influencer-style images with full scene + camera control."
+          cta="Start Mode B"
+        />
+      </div>
+
+      {/* ----- Library shortcuts ------------------------------------------ */}
+      <div className="mt-8 grid gap-3 sm:grid-cols-3">
         <QuickAction
           icon={<FolderKanban className="h-4 w-4" />}
           label="Projects"
@@ -119,6 +142,44 @@ export default async function DashboardPage() {
         )}
       </section>
     </>
+  );
+}
+
+function CreationCard({
+  href,
+  icon,
+  eyebrow,
+  title,
+  body,
+  cta,
+}: {
+  href: string;
+  icon: React.ReactNode;
+  eyebrow: string;
+  title: string;
+  body: string;
+  cta: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="group block rounded-lg border border-[var(--color-border)] p-6 transition-all hover:border-[var(--color-foreground)] hover:shadow-md"
+    >
+      <div className="mb-3 flex items-center gap-2">
+        <span className="grid h-9 w-9 place-items-center rounded-md bg-[var(--color-secondary)]">
+          {icon}
+        </span>
+        <span className="text-xs uppercase tracking-wider text-[var(--color-muted-foreground)]">
+          {eyebrow}
+        </span>
+      </div>
+      <div className="text-xl font-semibold">{title}</div>
+      <p className="mt-2 text-sm text-[var(--color-muted-foreground)]">{body}</p>
+      <div className="mt-4 inline-flex items-center gap-1 text-sm font-medium">
+        {cta}
+        <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+      </div>
+    </Link>
   );
 }
 

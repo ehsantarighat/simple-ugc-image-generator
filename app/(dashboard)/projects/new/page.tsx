@@ -6,7 +6,12 @@ import { Button } from "@/components/ui/button";
 
 export const dynamic = "force-dynamic";
 
-export default async function NewProjectPage() {
+export default async function NewProjectPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ mode?: string }>;
+}) {
+  const { mode } = await searchParams;
   const { supabase, user } = await requireUser();
   const [{ data: models }, { data: products }] = await Promise.all([
     supabase
@@ -21,15 +26,22 @@ export default async function NewProjectPage() {
       .order("created_at", { ascending: false }),
   ]);
 
+  const initialMode =
+    mode === "product_reproduction" ? "product_reproduction" : "ugc_model_product";
+
   return (
     <>
       <PageHeader
         title="New project"
-        description="Set up a shoot. You can pick the model and product now or do it on the project page."
+        description={
+          initialMode === "product_reproduction"
+            ? "Mode A — Recreate product photos at scale across styles, ratios, and platforms."
+            : "Mode B — Combine a model and a product to generate realistic UGC images."
+        }
       />
 
       <div className="max-w-2xl">
-        {(!models || models.length === 0) && (
+        {(!models || models.length === 0) && initialMode === "ugc_model_product" && (
           <div className="mb-4 rounded-md border border-dashed border-[var(--color-border)] p-4 text-sm">
             You don't have any models yet.{" "}
             <Link href="/models/new" className="underline">
@@ -48,11 +60,15 @@ export default async function NewProjectPage() {
           </div>
         )}
 
-        <NewProjectForm models={models ?? []} products={products ?? []} />
+        <NewProjectForm
+          models={models ?? []}
+          products={products ?? []}
+          initialMode={initialMode}
+        />
 
         <div className="mt-6">
           <Button asChild variant="ghost" size="sm">
-            <Link href="/projects">Cancel</Link>
+            <Link href="/dashboard">Cancel</Link>
           </Button>
         </div>
       </div>

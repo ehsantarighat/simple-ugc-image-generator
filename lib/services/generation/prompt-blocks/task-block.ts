@@ -37,6 +37,14 @@ const TASK_TEXT: Record<GenerationMode, string> = {
   pack_variation_generation: [
     "Re-shoot the approved anchor image for a new aspect ratio and/or platform without changing the subject or product.",
   ].join("\n"),
+  product_reproduction_generation: [
+    "Create a final high-quality, photorealistic product image based on the uploaded product reference image(s).",
+    "",
+    "There is no human model in this image — this is a product-only reproduction. The result must look like real, professional product photography.",
+  ].join("\n"),
+  ratio_variant_generation: [
+    "Create a ratio-specific version of the approved reference image, recomposed for the target aspect ratio while preserving the original concept and identities.",
+  ].join("\n"),
 };
 
 export function buildTaskBlock(mode: GenerationMode): string {

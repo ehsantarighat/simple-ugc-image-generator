@@ -58,6 +58,10 @@ const GOAL_BY_MODE: Record<GenerationMode, string> = {
     "Create a strong anchor photograph for this concept that will serve as the visual reference for additional ratio and variation outputs.",
   pack_variation_generation:
     "Create a coherent ratio/composition variation of the approved anchor image while preserving identity, product, and tone.",
+  product_reproduction_generation:
+    "Create a high-quality, photorealistic reproduction of the product in the chosen presentation style and target format.",
+  ratio_variant_generation:
+    "Re-compose the approved reference image for the requested aspect ratio while preserving the original concept, product, and identities.",
 };
 
 export function buildStructuredPayload(

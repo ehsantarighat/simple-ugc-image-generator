@@ -11,13 +11,19 @@ import {
 import { selectProductReferences } from "@/lib/services/generation/reference-image-selection";
 
 // Import every adapter directly — bypass the registry's enabled/disabled list
-// so the test page can exercise providers that are currently commented out
-// of production.
+// so the test page can exercise providers that are currently disabled too.
 import { gptImage2Provider } from "@/lib/services/providers/adapters/gpt-image-2-provider";
 import { seedreamProvider } from "@/lib/services/providers/adapters/seedream-provider";
 import { recraftProvider } from "@/lib/services/providers/adapters/recraft-provider";
 import { qwenImageEditProvider } from "@/lib/services/providers/adapters/qwen-image-edit-provider";
 import { geminiProvider } from "@/lib/services/providers/adapters/gemini-provider";
+import {
+  falFluxKontextMulti,
+  falNanoBananaEdit,
+  falRecraftV3,
+  falSeedreamV4Edit,
+  falIdeogramV3,
+} from "@/lib/services/providers/adapters/fal-provider";
 import type { ImageProvider } from "@/lib/services/providers/image-provider-interface";
 
 // Max execution time on Railway for this route. Per-provider hard timeout
@@ -25,7 +31,16 @@ import type { ImageProvider } from "@/lib/services/providers/image-provider-inte
 export const maxDuration = 300;
 
 const PROVIDERS: Record<string, ImageProvider> = {
+  // Native adapter (production active)
   "gpt-image-2": gptImage2Provider,
+  // fal.ai-routed adapters (production active when FAL_KEY is set)
+  "fal-flux-kontext-multi": falFluxKontextMulti,
+  "fal-nano-banana-edit": falNanoBananaEdit,
+  "fal-recraft-v3": falRecraftV3,
+  "fal-seedream-v4-edit": falSeedreamV4Edit,
+  "fal-ideogram-v3": falIdeogramV3,
+  // Disabled native adapters — still exposed in the test bench so we can
+  // try them when each provider's contract is verified end-to-end.
   "seedream-4-5": seedreamProvider,
   "recraft-v3": recraftProvider,
   "qwen-image-edit": qwenImageEditProvider,

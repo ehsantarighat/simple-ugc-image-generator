@@ -2,25 +2,38 @@
 // provider-registry.ts
 // Returns an ImageProvider for a given request.
 //
-// ACTIVE adapter (verified against live API, returns real generations):
-//   - gpt-image-2     (OpenAI, premium)
+// ACTIVE adapters today:
+//   - gpt-image-2              (OpenAI native, premium)
+//   - fal-flux-kontext-multi   (FLUX Pro Kontext via fal.ai, premium, multi-ref)
+//   - fal-nano-banana-edit     (Gemini Flash Image via fal.ai, standard, multi-ref)
+//   - fal-recraft-v3           (Recraft V3 via fal.ai, premium, single-ref)
+//   - fal-seedream-v4-edit     (ByteDance Seedream V4 via fal.ai, premium)
+//   - fal-ideogram-v3          (Ideogram V3 via fal.ai, premium, text/logo)
 //
-// DISABLED-BY-DEFAULT adapters (scaffolded against docs, NOT yet validated
-// end-to-end against live API responses — caused "result echoes input" and
-// silent fallback bugs in production). Re-enable by:
-//   1. testing the adapter end-to-end with the real API
-//   2. confirming generate() returns *new* image bytes, not input bytes
-//   3. moving that adapter back into the PROVIDERS array
+// DISABLED native adapters (kept in the codebase for reference; never matched
+// the real provider API contract — fal.ai versions of the same models are
+// active above):
+//   - seedreamProvider, recraftProvider, qwenImageEditProvider, geminiProvider
 //
 // Each adapter's canHandle() reads its API key from process.env directly,
-// so the registry degrades to whatever's actually wired up.
-// Selection signal today: qualityPriority + reference count requirements.
+// so the registry naturally degrades to whatever's actually wired up. If
+// FAL_KEY isn't set, the fal adapters all opt out and gpt-image-2 carries
+// the load. If FAL_KEY is set, the registry can route by quality priority
+// + reference count + tier preference.
 // ============================================================================
 
 import "server-only";
 
 import { gptImage2Provider } from "@/lib/services/providers/adapters/gpt-image-2-provider";
-// Imports kept so we can flip these back on quickly when verified.
+import {
+  falFluxKontextMulti,
+  falNanoBananaEdit,
+  falRecraftV3,
+  falSeedreamV4Edit,
+  falIdeogramV3,
+} from "@/lib/services/providers/adapters/fal-provider";
+// Disabled native adapters — kept importable for the test bench but not in
+// the registry rotation.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { seedreamProvider } from "@/lib/services/providers/adapters/seedream-provider";
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -37,10 +50,11 @@ import type {
 
 const PROVIDERS: ImageProvider[] = [
   gptImage2Provider,
-  // seedreamProvider,       // TODO: verify image-input field shape against ARK API
-  // recraftProvider,        // TODO: verify imageToImage response_format=b64_json works
-  // qwenImageEditProvider,  // TODO: switch to image-edit endpoint (multimodal-generation only describes)
-  // geminiProvider,         // TODO: confirm model id + responseModalities config; currently echoes input
+  falFluxKontextMulti,
+  falNanoBananaEdit,
+  falRecraftV3,
+  falSeedreamV4Edit,
+  falIdeogramV3,
 ];
 
 export interface SelectProviderArgs {

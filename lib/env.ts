@@ -51,6 +51,11 @@ const serverEnvSchema = z.object({
   RECRAFT_API_KEY: z.string().optional(),
   RECRAFT_BASE_URL: z.string().default("https://external.api.recraft.ai/v1"),
   RECRAFT_MODEL: z.string().default("recraftv3"),
+
+  // --- fal.ai aggregator (single key → many models) ------------------------
+  // Dashboard: https://fal.ai/dashboard → API Keys
+  // Format: "<keyId>:<secret>". The fal SDK auto-reads FAL_KEY from env.
+  FAL_KEY: z.string().optional(),
 });
 
 let cached: z.infer<typeof serverEnvSchema> | null = null;

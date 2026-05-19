@@ -10,40 +10,78 @@ export const dynamic = "force-dynamic";
 // /api/test-provider. Kept here (rather than fetched) so the server-rendered
 // page can render the grid immediately without a flash.
 const PROVIDERS: ProviderInfo[] = [
+  // --- Production-active ---------------------------------------------------
   {
     id: "gpt-image-2",
     tier: "premium",
     family: "openai",
     maxReferenceImages: 16,
-    notes: "Production baseline.",
+    notes: "OpenAI native. Production baseline.",
   },
+  // --- fal.ai-routed (production-active when FAL_KEY is set) --------------
+  {
+    id: "fal-flux-kontext-multi",
+    tier: "premium",
+    family: "flux-via-fal",
+    maxReferenceImages: 6,
+    notes: "FLUX Pro Kontext (multi-reference) via fal.ai.",
+  },
+  {
+    id: "fal-nano-banana-edit",
+    tier: "standard",
+    family: "gemini-via-fal",
+    maxReferenceImages: 4,
+    notes: "Gemini Flash Image (Nano Banana) edit via fal.ai.",
+  },
+  {
+    id: "fal-recraft-v3",
+    tier: "premium",
+    family: "recraft-via-fal",
+    maxReferenceImages: 1,
+    notes: "Recraft V3 image-to-image via fal.ai.",
+  },
+  {
+    id: "fal-seedream-v4-edit",
+    tier: "premium",
+    family: "seedream-via-fal",
+    maxReferenceImages: 4,
+    notes: "ByteDance Seedream V4 edit via fal.ai.",
+  },
+  {
+    id: "fal-ideogram-v3",
+    tier: "premium",
+    family: "ideogram-via-fal",
+    maxReferenceImages: 1,
+    notes: "Ideogram V3 via fal.ai — strong text/logo fidelity.",
+  },
+  // --- Disabled native adapters (kept for verification testing) -----------
   {
     id: "seedream-4-5",
     tier: "premium",
-    family: "seedream",
+    family: "seedream-native",
     maxReferenceImages: 10,
-    notes: "BytePlus ModelArk — needs SEEDREAM_API_KEY.",
+    notes: "BytePlus ModelArk native — needs valid model id.",
   },
   {
     id: "recraft-v3",
     tier: "premium",
-    family: "recraft",
+    family: "recraft-native",
     maxReferenceImages: 1,
-    notes: "Recraft V3 — needs RECRAFT_API_KEY. Single-source img2img.",
+    notes: "Recraft native API.",
   },
   {
     id: "qwen-image-edit",
     tier: "standard",
-    family: "qwen",
+    family: "qwen-native",
     maxReferenceImages: 4,
-    notes: "Alibaba Model Studio — needs QWEN_API_KEY.",
+    notes: "Alibaba Model Studio native.",
   },
   {
     id: "gemini-flash-image",
     tier: "standard",
-    family: "gemini",
+    family: "gemini-native",
     maxReferenceImages: 6,
-    notes: "Google AI Studio — needs GEMINI_API_KEY.",
+    notes: "Google AI Studio native.",
   },
 ];
 

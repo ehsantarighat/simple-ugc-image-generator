@@ -2,10 +2,18 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, FolderKanban, User2, Box, Settings } from "lucide-react";
+import {
+  LayoutDashboard,
+  FolderKanban,
+  User2,
+  Box,
+  Settings,
+  Sparkles,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const items = [
+  { href: "/studio", label: "Studio", icon: Sparkles },
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/models", label: "Models", icon: User2 },

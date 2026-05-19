@@ -1,23 +1,33 @@
 // ============================================================================
 // provider-registry.ts
-// Returns an ImageProvider for a given request. Registered adapters today:
-//   - gpt-image-2     (OpenAI, premium, always available — required key)
-//   - seedream-4-5    (BytePlus, premium, optional)
-//   - recraft-v3      (Recraft, premium for product work, single-source img2img)
-//   - qwen-image-edit (Alibaba, standard, multi-image edit-oriented)
-//   - gemini-flash-image (Google, standard, multi-reference composition)
+// Returns an ImageProvider for a given request.
 //
-// Each adapter's canHandle() returns false when its env key is missing, so
-// the registry naturally degrades to whatever the user has configured.
+// ACTIVE adapter (verified against live API, returns real generations):
+//   - gpt-image-2     (OpenAI, premium)
+//
+// DISABLED-BY-DEFAULT adapters (scaffolded against docs, NOT yet validated
+// end-to-end against live API responses — caused "result echoes input" and
+// silent fallback bugs in production). Re-enable by:
+//   1. testing the adapter end-to-end with the real API
+//   2. confirming generate() returns *new* image bytes, not input bytes
+//   3. moving that adapter back into the PROVIDERS array
+//
+// Each adapter's canHandle() reads its API key from process.env directly,
+// so the registry degrades to whatever's actually wired up.
 // Selection signal today: qualityPriority + reference count requirements.
 // ============================================================================
 
 import "server-only";
 
 import { gptImage2Provider } from "@/lib/services/providers/adapters/gpt-image-2-provider";
+// Imports kept so we can flip these back on quickly when verified.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { seedreamProvider } from "@/lib/services/providers/adapters/seedream-provider";
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { recraftProvider } from "@/lib/services/providers/adapters/recraft-provider";
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { qwenImageEditProvider } from "@/lib/services/providers/adapters/qwen-image-edit-provider";
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { geminiProvider } from "@/lib/services/providers/adapters/gemini-provider";
 import type { QualityPriority } from "@/lib/services/generation/payload-schema";
 import type {
@@ -27,10 +37,10 @@ import type {
 
 const PROVIDERS: ImageProvider[] = [
   gptImage2Provider,
-  seedreamProvider,
-  recraftProvider,
-  qwenImageEditProvider,
-  geminiProvider,
+  // seedreamProvider,       // TODO: verify image-input field shape against ARK API
+  // recraftProvider,        // TODO: verify imageToImage response_format=b64_json works
+  // qwenImageEditProvider,  // TODO: switch to image-edit endpoint (multimodal-generation only describes)
+  // geminiProvider,         // TODO: confirm model id + responseModalities config; currently echoes input
 ];
 
 export interface SelectProviderArgs {

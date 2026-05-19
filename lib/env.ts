@@ -14,12 +14,22 @@ const serverEnvSchema = z.object({
   OPENAI_IMAGE_MODEL: z.string().default("gpt-image-2"),
 
   // --- Seedream (BytePlus ModelArk) ----------------------------------------
+  // The "model" sent to ARK is either:
+  //   (a) a public Doubao/Seedream model id like "doubao-seedream-3-0-t2i-250415"
+  //   (b) a private endpoint id you created in the BytePlus console
+  //       (looks like "ep-20240xxx-xxxxx")
+  // Override these per-environment once you know which model id your ARK
+  // workspace actually has access to.
   SEEDREAM_API_KEY: z.string().optional(),
   SEEDREAM_BASE_URL: z
     .string()
     .default("https://ark.ap-southeast.bytepluses.com/api/v3"),
-  SEEDREAM_MODEL_HIGH_QUALITY: z.string().default("seedream-4-5"),
-  SEEDREAM_MODEL_LITE: z.string().default("seedream-5-lite"),
+  SEEDREAM_MODEL_HIGH_QUALITY: z
+    .string()
+    .default("doubao-seedream-4-0-250828"),
+  SEEDREAM_MODEL_LITE: z
+    .string()
+    .default("doubao-seedream-3-0-t2i-250415"),
 
   // --- Qwen (Alibaba Model Studio) -----------------------------------------
   QWEN_API_KEY: z.string().optional(),

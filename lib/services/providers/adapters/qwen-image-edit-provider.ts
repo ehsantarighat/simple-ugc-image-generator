@@ -75,7 +75,9 @@ async function generate(
     },
     parameters: {
       n: args.output.numberOfVariations,
-      size: args.output.size,
+      // DashScope's image-generation parameters want width*height with an
+      // asterisk separator, NOT widthxheight like the rest of the platform.
+      size: args.output.size.replace("x", "*"),
       result_format: "b64",
     },
   };

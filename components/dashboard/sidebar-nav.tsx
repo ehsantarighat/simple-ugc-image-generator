@@ -9,6 +9,7 @@ import {
   Box,
   Settings,
   Sparkles,
+  FlaskConical,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -18,6 +19,7 @@ const items = [
   { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/models", label: "Models", icon: User2 },
   { href: "/products", label: "Products", icon: Box },
+  { href: "/test", label: "Test bench", icon: FlaskConical },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

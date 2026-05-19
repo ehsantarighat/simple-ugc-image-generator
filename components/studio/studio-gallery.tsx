@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import {
   AlertTriangle,
   Cpu,
+  DollarSign,
   Download,
   ExternalLink,
   Loader2,
@@ -18,6 +19,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
+/** Format tenth-cents (1/1000 USD) → human-readable USD. */
+function formatCost(tenthCents: number | null | undefined): string {
+  if (!tenthCents || tenthCents <= 0) return "free";
+  const usd = tenthCents / 1000;
+  if (usd < 0.01) return "<$0.01";
+  return `$${usd.toFixed(2)}`;
+}
+
 export interface StudioImage {
   id: string;
   storage_path: string;
@@ -26,6 +35,8 @@ export interface StudioImage {
   prompt_used: string | null;
   image_role: string | null;
   metadata_json: Record<string, unknown> | null;
+  provider_used: string | null;
+  provider_cost_tenth_cents: number | null;
   created_at: string;
 }
 
@@ -151,9 +162,20 @@ export function StudioGallery({ images, recentFailure = null }: Props) {
                   title={img.prompt_used ?? "Open preview"}
                 >
                   <SignedClientImage path={img.storage_path} />
+                  {/* Cost overlay — bottom-right corner, only when we have a
+                      tracked price. Pointer-events-none so it doesn't block
+                      the click on the parent button. */}
+                  {(img.provider_cost_tenth_cents ?? 0) > 0 && (
+                    <span className="pointer-events-none absolute bottom-1.5 right-1.5 inline-flex items-center gap-0.5 rounded-md bg-black/65 px-1.5 py-0.5 text-[10px] font-medium text-white backdrop-blur-sm">
+                      <DollarSign className="h-2.5 w-2.5" />
+                      {formatCost(img.provider_cost_tenth_cents).replace("$", "")}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
+            {/* Day-total cost line under each group */}
+            <DayTotal items={items} />
           </section>
         ))}
       </div>
@@ -200,8 +222,11 @@ function Lightbox({
   const ratio = String(meta.target_aspect_ratio ?? meta.size ?? "—");
   const stylePreset = meta.style_preset ? String(meta.style_preset) : null;
   const mode = String(meta.generation_mode ?? meta.creation_mode ?? "—");
-  const provider = meta.provider ? String(meta.provider) : null;
+  // Prefer the canonical `provider_used` column; fall back to the metadata
+  // copy for rows generated before column-level tracking existed.
+  const provider = image.provider_used ?? (meta.provider ? String(meta.provider) : null);
   const model = meta.model ? String(meta.model) : null;
+  const costStr = formatCost(image.provider_cost_tenth_cents);
 
   return (
     <div
@@ -272,6 +297,17 @@ function Lightbox({
             </div>
           )}
 
+          {(image.provider_cost_tenth_cents ?? 0) > 0 && (
+            <div className="flex items-center gap-1.5 rounded-md bg-[var(--color-secondary)]/60 px-2 py-1.5 text-[11px] text-[var(--color-muted-foreground)]">
+              <DollarSign className="h-3 w-3 shrink-0" />
+              <span>Cost</span>
+              <span className="font-medium text-[var(--color-foreground)]">
+                {costStr}
+              </span>
+              <span className="opacity-60">· provider list price</span>
+            </div>
+          )}
+
           {image.prompt_used && (
             <details className="text-xs">
               <summary className="cursor-pointer text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)]">
@@ -301,6 +337,24 @@ function Lightbox({
           </div>
         </aside>
       </div>
+    </div>
+  );
+}
+
+function DayTotal({ items }: { items: StudioImage[] }) {
+  const totalTenthCents = items.reduce(
+    (sum, i) => sum + (i.provider_cost_tenth_cents ?? 0),
+    0
+  );
+  const tracked = items.filter((i) => (i.provider_cost_tenth_cents ?? 0) > 0).length;
+  if (totalTenthCents <= 0) return null;
+  return (
+    <div className="mt-2 flex items-center justify-end gap-1 text-[11px] text-[var(--color-muted-foreground)]">
+      <DollarSign className="h-3 w-3" />
+      <span>
+        {formatCost(totalTenthCents)} across {tracked} image
+        {tracked === 1 ? "" : "s"} today
+      </span>
     </div>
   );
 }

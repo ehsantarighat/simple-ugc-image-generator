@@ -26,7 +26,8 @@ export default async function StudioPage() {
         .from("generated_images")
         .select(
           `id, storage_path, project_id, prompt_used, image_role,
-           metadata_json, created_at,
+           metadata_json, provider_used, provider_cost_tenth_cents,
+           created_at,
            project:projects(title)`
         )
         .eq("user_id", user.id)
@@ -77,6 +78,9 @@ export default async function StudioPage() {
         typeof row.metadata_json === "object" && row.metadata_json !== null
           ? (row.metadata_json as Record<string, unknown>)
           : null,
+      provider_used: (row.provider_used as string | null) ?? null,
+      provider_cost_tenth_cents:
+        (row.provider_cost_tenth_cents as number | null) ?? null,
       created_at: row.created_at as string,
     };
   });

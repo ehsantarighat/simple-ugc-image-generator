@@ -11,6 +11,7 @@ import {
 import { buildStructuredPayload } from "@/lib/services/generation/build-structured-payload";
 import { buildRefinementPrompt } from "@/lib/services/generation/build-refinement-prompt";
 import { callOpenAIImageEdit } from "@/lib/services/generation/openai-image-edit";
+import { calculateCost } from "@/lib/services/billing/pricing-table";
 import {
   selectModelReferences,
   selectProductReferences,
@@ -187,14 +188,22 @@ export async function runRefinement(
     const output = { ...payload.output, numberOfVariations: 1 };
 
     const allRefs: Uploadable[] = [sourceFile, ...refModel, ...refProduct];
-    const { images: pngBuffers } = await callOpenAIImageEdit({
+    const { images: pngBuffers, providerId, routingReason } = await callOpenAIImageEdit({
       model: env.OPENAI_IMAGE_MODEL,
       prompt,
       images: allRefs,
       output,
     });
 
+    const perImageCost = calculateCost({
+      providerId: providerId ?? null,
+      size: output.size,
+      quality: output.quality,
+      numberOfImages: 1,
+    });
+
     const insertedIds: string[] = [];
+    let totalCostTenthCents = 0;
     for (let i = 0; i < pngBuffers.length; i++) {
       const filename = `${Date.now()}-${i}.png`;
       const storagePath = buildStoragePath(
@@ -214,9 +223,17 @@ export async function runRefinement(
           parent_image_id: source.id,
           storage_path: storagePath,
           prompt_used: prompt,
+          provider_used: providerId ?? null,
+          provider_cost_tenth_cents: perImageCost.costTenthCents,
+          billed_cost_tenth_cents: perImageCost.costTenthCents,
+          price_table_version: perImageCost.priceTableVersion,
+          cost_attribution: perImageCost.known ? "billed" : "unknown",
           metadata_json: {
             size: output.size,
+            quality: output.quality,
             model: env.OPENAI_IMAGE_MODEL,
+            provider: providerId,
+            routing_reason: routingReason,
             mode: "image_refinement",
             refinement_prompt: args.refinementPrompt,
             revision_request_id: revisionRequestId,
@@ -224,7 +241,23 @@ export async function runRefinement(
         })
         .select("id")
         .single();
-      if (row) insertedIds.push(row.id as string);
+      if (row) {
+        insertedIds.push(row.id as string);
+        totalCostTenthCents += perImageCost.costTenthCents;
+      }
+    }
+    // Refinements re-use the parent generation_request — add to existing total.
+    if (totalCostTenthCents > 0) {
+      const { data: parentReq } = await svc
+        .from("generation_requests")
+        .select("total_cost_tenth_cents")
+        .eq("id", reqRow.id)
+        .single();
+      const prior = (parentReq?.total_cost_tenth_cents as number | null) ?? 0;
+      await svc
+        .from("generation_requests")
+        .update({ total_cost_tenth_cents: prior + totalCostTenthCents })
+        .eq("id", reqRow.id);
     }
 
     await svc

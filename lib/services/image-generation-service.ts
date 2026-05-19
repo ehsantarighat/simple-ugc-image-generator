@@ -12,6 +12,7 @@ import {
 import { buildStructuredPayload } from "@/lib/services/generation/build-structured-payload";
 import { buildGenerationPrompt } from "@/lib/services/generation/build-generation-prompt";
 import { callOpenAIImageEdit } from "@/lib/services/generation/openai-image-edit";
+import { calculateCost } from "@/lib/services/billing/pricing-table";
 import {
   selectModelReferences,
   selectProductReferences,
@@ -192,14 +193,24 @@ export async function runGeneration(
     );
     const allRefs: Uploadable[] = [...refModel, ...refProduct];
 
-    const { images: pngBuffers } = await callOpenAIImageEdit({
+    const { images: pngBuffers, providerId, routingReason } = await callOpenAIImageEdit({
       model: env.OPENAI_IMAGE_MODEL,
       prompt,
       images: allRefs,
       output: payload.output,
     });
 
+    // Compute per-image cost once; the same unit price applies to every
+    // image in this batch since they share size/quality/provider.
+    const perImageCost = calculateCost({
+      providerId: providerId ?? null,
+      size: payload.output.size,
+      quality: payload.output.quality,
+      numberOfImages: 1,
+    });
+
     const insertedIds: string[] = [];
+    let totalCostTenthCents = 0;
     for (let i = 0; i < pngBuffers.length; i++) {
       const filename = `${Date.now()}-${i}.png`;
       const storagePath = buildStoragePath(
@@ -218,9 +229,17 @@ export async function runGeneration(
           user_id: args.userId,
           storage_path: storagePath,
           prompt_used: prompt,
+          provider_used: providerId ?? null,
+          provider_cost_tenth_cents: perImageCost.costTenthCents,
+          billed_cost_tenth_cents: perImageCost.costTenthCents,
+          price_table_version: perImageCost.priceTableVersion,
+          cost_attribution: perImageCost.known ? "billed" : "unknown",
           metadata_json: {
             size: payload.output.size,
+            quality: payload.output.quality,
             model: env.OPENAI_IMAGE_MODEL,
+            provider: providerId,
+            routing_reason: routingReason,
             generation_mode: mode,
             subject_mode: args.subjectMode,
             style_mode: args.styleMode,
@@ -232,12 +251,20 @@ export async function runGeneration(
         })
         .select("id")
         .single();
-      if (row) insertedIds.push(row.id as string);
+      if (row) {
+        insertedIds.push(row.id as string);
+        totalCostTenthCents += perImageCost.costTenthCents;
+      }
     }
 
     await svc
       .from("generation_requests")
-      .update({ status: "completed" as GenerationStatus })
+      .update({
+        status: "completed" as GenerationStatus,
+        provider_selected: providerId ?? null,
+        routing_reason: routingReason ?? null,
+        total_cost_tenth_cents: totalCostTenthCents,
+      })
       .eq("id", requestId);
 
     return {

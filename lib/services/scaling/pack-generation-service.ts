@@ -23,6 +23,7 @@ import { buildStructuredPayload } from "@/lib/services/generation/build-structur
 import { buildGenerationPrompt } from "@/lib/services/generation/build-generation-prompt";
 import { buildPackVariationPrompt } from "@/lib/services/generation/build-pack-variation-prompt";
 import { callOpenAIImageEdit } from "@/lib/services/generation/openai-image-edit";
+import { calculateCost } from "@/lib/services/billing/pricing-table";
 import {
   selectModelReferences,
   selectProductReferences,
@@ -364,7 +365,7 @@ async function generateAnchor(args: {
 
   try {
     const allRefs: Uploadable[] = [...args.refModel, ...args.refProduct];
-    const { images: pngBuffers } = await callOpenAIImageEdit({
+    const { images: pngBuffers, providerId, routingReason } = await callOpenAIImageEdit({
       model: args.env,
       prompt,
       images: allRefs,
@@ -381,6 +382,13 @@ async function generateAnchor(args: {
     );
     await uploadServerBytes(storagePath, pngBuffers[0], "image/png");
 
+    const cost = calculateCost({
+      providerId: providerId ?? null,
+      size: payload.output.size,
+      quality: payload.output.quality,
+      numberOfImages: 1,
+    });
+
     const { data: img } = await args.svc
       .from("generated_images")
       .insert({
@@ -389,9 +397,16 @@ async function generateAnchor(args: {
         user_id: args.userId,
         storage_path: storagePath,
         prompt_used: prompt,
+        provider_used: providerId ?? null,
+        provider_cost_tenth_cents: cost.costTenthCents,
+        billed_cost_tenth_cents: cost.costTenthCents,
+        price_table_version: cost.priceTableVersion,
+        cost_attribution: cost.known ? "billed" : "unknown",
         metadata_json: {
           size: payload.output.size,
+          quality: payload.output.quality,
           model: args.env,
+          provider: providerId,
           generation_mode: "pack_anchor_generation",
           pack_id: args.contentPackId,
           concept_id: args.conceptId,
@@ -403,7 +418,12 @@ async function generateAnchor(args: {
 
     await args.svc
       .from("generation_requests")
-      .update({ status: "completed" })
+      .update({
+        status: "completed",
+        provider_selected: providerId ?? null,
+        routing_reason: routingReason ?? null,
+        total_cost_tenth_cents: cost.costTenthCents,
+      })
       .eq("id", requestId);
 
     if (!img) return null;
@@ -528,7 +548,7 @@ async function generateRatioVariant(args: {
       ...args.refModel.slice(0, 2),
       ...args.refProduct.slice(0, 2),
     ];
-    const { images: pngBuffers } = await callOpenAIImageEdit({
+    const { images: pngBuffers, providerId, routingReason } = await callOpenAIImageEdit({
       model: args.env,
       prompt,
       images: allRefs,
@@ -545,6 +565,13 @@ async function generateRatioVariant(args: {
     );
     await uploadServerBytes(storagePath, pngBuffers[0], "image/png");
 
+    const cost = calculateCost({
+      providerId: providerId ?? null,
+      size: payload.output.size,
+      quality: payload.output.quality,
+      numberOfImages: 1,
+    });
+
     const { data: img } = await args.svc
       .from("generated_images")
       .insert({
@@ -553,9 +580,16 @@ async function generateRatioVariant(args: {
         user_id: args.userId,
         storage_path: storagePath,
         prompt_used: prompt,
+        provider_used: providerId ?? null,
+        provider_cost_tenth_cents: cost.costTenthCents,
+        billed_cost_tenth_cents: cost.costTenthCents,
+        price_table_version: cost.priceTableVersion,
+        cost_attribution: cost.known ? "billed" : "unknown",
         metadata_json: {
           size: payload.output.size,
+          quality: payload.output.quality,
           model: args.env,
+          provider: providerId,
           generation_mode: "pack_variation_generation",
           pack_id: args.contentPackId,
           concept_id: args.conceptId,
@@ -567,7 +601,12 @@ async function generateRatioVariant(args: {
       .single();
     await args.svc
       .from("generation_requests")
-      .update({ status: "completed" })
+      .update({
+        status: "completed",
+        provider_selected: providerId ?? null,
+        routing_reason: routingReason ?? null,
+        total_cost_tenth_cents: cost.costTenthCents,
+      })
       .eq("id", requestId);
 
     if (!img) return null;

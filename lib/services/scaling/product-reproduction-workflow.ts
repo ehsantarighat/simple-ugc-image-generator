@@ -23,6 +23,7 @@ import {
 import { buildStructuredPayload } from "@/lib/services/generation/build-structured-payload";
 import { buildProductReproductionPrompt } from "@/lib/services/generation/build-product-reproduction-prompt";
 import { callOpenAIImageEdit } from "@/lib/services/generation/openai-image-edit";
+import { calculateCost } from "@/lib/services/billing/pricing-table";
 import { selectProductReferences } from "@/lib/services/generation/reference-image-selection";
 import { buildReproductionPlan } from "@/lib/services/scaling/product-reproduction-planner-service";
 import type {
@@ -230,6 +231,13 @@ export async function runProductReproduction(
       );
       await uploadServerBytes(storagePath, pngBuffers[0], "image/png");
 
+      const cost = calculateCost({
+        providerId: providerId ?? null,
+        size: payload.output.size,
+        quality: payload.output.quality,
+        numberOfImages: 1,
+      });
+
       const { data: imgRow } = await svc
         .from("generated_images")
         .insert({
@@ -240,8 +248,14 @@ export async function runProductReproduction(
           storage_path: storagePath,
           prompt_used: prompt,
           image_role: isAnchor ? "anchor" : "ratio_variant",
+          provider_used: providerId ?? null,
+          provider_cost_tenth_cents: cost.costTenthCents,
+          billed_cost_tenth_cents: cost.costTenthCents,
+          price_table_version: cost.priceTableVersion,
+          cost_attribution: cost.known ? "billed" : "unknown",
           metadata_json: {
             size: payload.output.size,
+            quality: payload.output.quality,
             model: env.OPENAI_IMAGE_MODEL,
             provider: providerId,
             creation_mode: "product_reproduction",
@@ -259,6 +273,7 @@ export async function runProductReproduction(
           status: "completed",
           provider_selected: providerId ?? null,
           routing_reason: routingReason ?? null,
+          total_cost_tenth_cents: cost.costTenthCents,
         })
         .eq("id", requestId);
       if (imgRow) {

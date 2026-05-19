@@ -11,36 +11,81 @@ import {
   Box,
   Sparkles,
   Camera,
+  DollarSign,
   ImageIcon,
 } from "lucide-react";
 import { SignedImage } from "@/components/shared/signed-image";
 import { formatRelativeTime } from "@/lib/utils";
+
+/** Format tenth-cents (1/1000 USD) → human-readable USD string. */
+function formatSpend(tenthCents: number): string {
+  if (!tenthCents || tenthCents <= 0) return "$0.00";
+  const usd = tenthCents / 1000;
+  if (usd < 0.01) return "<$0.01";
+  if (usd < 100) return `$${usd.toFixed(2)}`;
+  return `$${usd.toFixed(0)}`;
+}
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
   const { supabase, user } = await requireUser();
 
-  const [{ data: projects }, { data: recentImages }, { count: modelCount }, { count: productCount }] =
-    await Promise.all([
-      supabase
-        .from("projects")
-        .select("id, title, updated_at, target_channel")
-        .eq("user_id", user.id)
-        .order("updated_at", { ascending: false })
-        .limit(6),
-      supabase
-        .from("generated_images")
-        .select("id, storage_path, project_id, created_at")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(8),
-      supabase.from("models").select("id", { count: "exact", head: true }).eq("user_id", user.id),
-      supabase
-        .from("products")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", user.id),
-    ]);
+  // Spend windows. Use date_trunc-like ISO timestamps so the DB index on
+  // (user_id, created_at) is hit. Today = midnight local-to-server (UTC).
+  const now = new Date();
+  const startOfToday = new Date(Date.UTC(
+    now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()
+  ));
+  const startOfMonth = new Date(Date.UTC(
+    now.getUTCFullYear(), now.getUTCMonth(), 1
+  ));
+
+  const [
+    { data: projects },
+    { data: recentImages },
+    { count: modelCount },
+    { count: productCount },
+    { data: todaySpendRows },
+    { data: monthSpendRows },
+  ] = await Promise.all([
+    supabase
+      .from("projects")
+      .select("id, title, updated_at, target_channel")
+      .eq("user_id", user.id)
+      .order("updated_at", { ascending: false })
+      .limit(6),
+    supabase
+      .from("generated_images")
+      .select("id, storage_path, project_id, created_at")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(8),
+    supabase.from("models").select("id", { count: "exact", head: true }).eq("user_id", user.id),
+    supabase
+      .from("products")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id),
+    // Lightweight spend pulls — just the columns we need to sum client-side.
+    // For large accounts this should be moved to an aggregate RPC, but at
+    // MVP scale (≤ a few thousand images/user) this is fine.
+    supabase
+      .from("generated_images")
+      .select("provider_cost_tenth_cents")
+      .eq("user_id", user.id)
+      .gte("created_at", startOfToday.toISOString()),
+    supabase
+      .from("generated_images")
+      .select("provider_cost_tenth_cents")
+      .eq("user_id", user.id)
+      .gte("created_at", startOfMonth.toISOString()),
+  ]);
+
+  const sumCost = (rows: { provider_cost_tenth_cents: number | null }[] | null) =>
+    (rows ?? []).reduce((sum, r) => sum + (r.provider_cost_tenth_cents ?? 0), 0);
+  const todaySpend = sumCost(todaySpendRows);
+  const monthSpend = sumCost(monthSpendRows);
+  const monthImageCount = (monthSpendRows ?? []).length;
 
   return (
     <>
@@ -48,6 +93,29 @@ export default async function DashboardPage() {
         title="Dashboard"
         description="Pick a creation path or pick up where you left off."
       />
+
+      {/* ----- Spend summary --------------------------------------------- */}
+      <div className="mb-8 grid gap-3 sm:grid-cols-3">
+        <SpendCard
+          label="Today"
+          value={formatSpend(todaySpend)}
+          hint={todaySpend > 0 ? "Provider list price" : "No spend yet"}
+        />
+        <SpendCard
+          label="This month"
+          value={formatSpend(monthSpend)}
+          hint={`${monthImageCount} image${monthImageCount === 1 ? "" : "s"} generated`}
+        />
+        <SpendCard
+          label="Avg per image"
+          value={
+            monthImageCount > 0
+              ? formatSpend(Math.round(monthSpend / monthImageCount))
+              : "—"
+          }
+          hint="Across all providers this month"
+        />
+      </div>
 
       {/* ----- Two primary creation paths -------------------------------- */}
       <div className="grid gap-4 md:grid-cols-2">
@@ -180,6 +248,31 @@ function CreationCard({
         <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
       </div>
     </Link>
+  );
+}
+
+function SpendCard({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string;
+  hint: string;
+}) {
+  return (
+    <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-secondary)]/30 p-4">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium uppercase tracking-wider text-[var(--color-muted-foreground)]">
+          {label}
+        </span>
+        <DollarSign className="h-3.5 w-3.5 text-[var(--color-muted-foreground)]" />
+      </div>
+      <div className="mt-1 text-2xl font-semibold tabular-nums">{value}</div>
+      <div className="mt-0.5 text-[11px] text-[var(--color-muted-foreground)]">
+        {hint}
+      </div>
+    </div>
   );
 }
 

@@ -11,6 +11,7 @@ import {
 import { buildStructuredPayload } from "@/lib/services/generation/build-structured-payload";
 import { buildVariationPrompt } from "@/lib/services/generation/build-variation-prompt";
 import { callOpenAIImageEdit } from "@/lib/services/generation/openai-image-edit";
+import { calculateCost } from "@/lib/services/billing/pricing-table";
 import {
   selectModelReferences,
   selectProductReferences,
@@ -139,14 +140,22 @@ export async function runVariation(args: RunVariationArgs): Promise<RunVariation
     const allRefs: Uploadable[] = [sourceFile, ...refModel, ...refProduct];
 
     const output = { ...payload.output, numberOfVariations: desiredCount };
-    const { images: pngBuffers } = await callOpenAIImageEdit({
+    const { images: pngBuffers, providerId, routingReason } = await callOpenAIImageEdit({
       model: env.OPENAI_IMAGE_MODEL,
       prompt,
       images: allRefs,
       output,
     });
 
+    const perImageCost = calculateCost({
+      providerId: providerId ?? null,
+      size: output.size,
+      quality: output.quality,
+      numberOfImages: 1,
+    });
+
     const insertedIds: string[] = [];
+    let totalCostTenthCents = 0;
     for (let i = 0; i < pngBuffers.length; i++) {
       const filename = `${Date.now()}-var-${i}.png`;
       const storagePath = buildStoragePath(
@@ -166,9 +175,17 @@ export async function runVariation(args: RunVariationArgs): Promise<RunVariation
           parent_image_id: approved.id,
           storage_path: storagePath,
           prompt_used: prompt,
+          provider_used: providerId ?? null,
+          provider_cost_tenth_cents: perImageCost.costTenthCents,
+          billed_cost_tenth_cents: perImageCost.costTenthCents,
+          price_table_version: perImageCost.priceTableVersion,
+          cost_attribution: perImageCost.known ? "billed" : "unknown",
           metadata_json: {
             size: output.size,
+            quality: output.quality,
             model: env.OPENAI_IMAGE_MODEL,
+            provider: providerId,
+            routing_reason: routingReason,
             mode: "approved_style_variation",
             variation_index: i,
             variation_request: args.variationRequest ?? null,
@@ -176,7 +193,24 @@ export async function runVariation(args: RunVariationArgs): Promise<RunVariation
         })
         .select("id")
         .single();
-      if (row) insertedIds.push(row.id as string);
+      if (row) {
+        insertedIds.push(row.id as string);
+        totalCostTenthCents += perImageCost.costTenthCents;
+      }
+    }
+    // Variation runs reuse the parent generation_request, so add the cost
+    // on top of whatever was already there rather than overwriting.
+    if (totalCostTenthCents > 0) {
+      const { data: parentReq } = await svc
+        .from("generation_requests")
+        .select("total_cost_tenth_cents")
+        .eq("id", reqRow.id)
+        .single();
+      const prior = (parentReq?.total_cost_tenth_cents as number | null) ?? 0;
+      await svc
+        .from("generation_requests")
+        .update({ total_cost_tenth_cents: prior + totalCostTenthCents })
+        .eq("id", reqRow.id);
     }
 
     return {

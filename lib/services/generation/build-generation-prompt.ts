@@ -57,10 +57,28 @@ export function buildGenerationPrompt(args: BuildGenerationPromptArgs): string {
   const isProductOnly = payload.subjectMode === "product_only";
   const sections: string[] = [];
 
+  // Detect apparel/wearable products early — used by both the reference
+  // block (to suppress "preserve outfit" language) and the wardrobe-swap
+  // block (which gets promoted to the very top when triggered).
+  const isApparel =
+    !isProductOnly &&
+    detectIsApparel({
+      category: payload.product.inferredCategory,
+      product: payload.product,
+    });
+
   // OUTPUT FORMAT must come first — it's the only thing preventing the
   // image model from collaging the inputs when given many references.
   sections.push(buildOutputFormatBlock());
   sections.push("");
+
+  // WARDROBE comes second when apparel is detected. Image models pay the
+  // most attention to opening tokens — burying this mid-prompt was letting
+  // it lose to the visual signal of the model's reference outfit.
+  if (isApparel) {
+    sections.push(buildWardrobeSwapBlock({ product: payload.product }));
+    sections.push("");
+  }
 
   sections.push(buildTaskBlock(payload.mode));
   sections.push("");
@@ -70,22 +88,13 @@ export function buildGenerationPrompt(args: BuildGenerationPromptArgs): string {
       hasSourceImage: false,
       modelImageCount: isProductOnly ? 0 : args.modelImageCount,
       productImageCount: args.productImageCount,
+      hasWardrobeSwap: isApparel,
     })
   );
   sections.push("");
   sections.push(buildSubjectModeBlock(payload.subjectMode));
   sections.push("");
   sections.push(buildStyleModeBlock(payload.styleMode));
-
-  // Detect apparel/wearable products so we can swap "preserve outfit" for
-  // an explicit wardrobe-swap instruction. Only relevant when a model is
-  // in the frame.
-  const isApparel =
-    !isProductOnly &&
-    detectIsApparel({
-      category: payload.product.inferredCategory,
-      product: payload.product,
-    });
 
   if (!isProductOnly && payload.model) {
     sections.push("");
@@ -96,11 +105,6 @@ export function buildGenerationPrompt(args: BuildGenerationPromptArgs): string {
         hasWardrobeSwap: isApparel,
       })
     );
-  }
-
-  if (isApparel) {
-    sections.push("");
-    sections.push(buildWardrobeSwapBlock({ product: payload.product }));
   }
 
   sections.push("");

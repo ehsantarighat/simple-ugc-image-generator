@@ -12,6 +12,7 @@ const BASE_NEGATIVE_CONSTRAINTS: readonly string[] = [
   "avoid showing the reference images alongside the generated subject",
   "avoid before/after, side-by-side, or comparison layouts",
   "avoid duplicating the model or the product within a single frame",
+  "avoid foam boards, hangers, or display surfaces holding the product next to the model",
   // Realism / fidelity
   "avoid synthetic AI-art appearance",
   "avoid CGI or 3D render look",

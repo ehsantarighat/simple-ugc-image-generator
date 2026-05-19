@@ -10,12 +10,14 @@ import {
   Settings,
   Sparkles,
   FlaskConical,
+  BookOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const items = [
   { href: "/studio", label: "Studio", icon: Sparkles },
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/playbook", label: "Playbook", icon: BookOpen },
   { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/models", label: "Models", icon: User2 },
   { href: "/products", label: "Products", icon: Box },

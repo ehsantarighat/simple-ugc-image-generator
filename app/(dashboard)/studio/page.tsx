@@ -55,7 +55,21 @@ export default async function StudioPage() {
           new Date(r.created_at).getTime() < Date.now() - 5 * 60_000)
     ) ?? null;
 
-  const scenarios: Scenario[] = SCENARIO_TEMPLATES.slice(0, 5).map((t) => ({
+  // Pick a diverse default 5 — one from each of the most-common categories
+  // so first-time users see range, not five variations of the same idea.
+  // Fall back to the first 5 in catalog order if any id is missing.
+  const FEATURED_SCENARIO_IDS = [
+    "general_three_quarter_portrait",
+    "beauty_morning_routine",
+    "apparel_mirror_selfie",
+    "food_in_hand_cheers",
+    "tech_in_hand_demo",
+  ];
+  const featured = FEATURED_SCENARIO_IDS
+    .map((id) => SCENARIO_TEMPLATES.find((t) => t.id === id))
+    .filter((t): t is (typeof SCENARIO_TEMPLATES)[number] => !!t);
+  const baseScenarios = featured.length === 5 ? featured : SCENARIO_TEMPLATES.slice(0, 5);
+  const scenarios: Scenario[] = baseScenarios.map((t) => ({
     id: t.id,
     title: t.title,
     prompt: t.scenePrompt,

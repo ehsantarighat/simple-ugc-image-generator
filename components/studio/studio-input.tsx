@@ -2,9 +2,10 @@
 
 import * as React from "react";
 import { useActionState } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowUp, Loader2, X } from "lucide-react";
+import { ArrowUp, BookOpen, Loader2, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ModeToggle, type CreationMode } from "@/components/studio/mode-toggle";
 import { AttachMenu } from "@/components/studio/attach-menu";
@@ -47,6 +48,7 @@ export function StudioInput({
   latestImageId = null,
 }: Props) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [state, formAction, pending] = useActionState<StudioActionResult, FormData>(
     createFromStudioAction,
     null
@@ -55,7 +57,17 @@ export function StudioInput({
   const [mode, setMode] = React.useState<CreationMode>(initialMode);
   const [modelId, setModelId] = React.useState<string | null>(initialModelId);
   const [productId, setProductId] = React.useState<string | null>(initialProductId);
-  const [scene, setScene] = React.useState("");
+  const [scene, setScene] = React.useState(
+    // Honor ?prompt=… so Playbook's "Open in Studio" button can prefill the
+    // textarea. Decoded once on mount; further changes go through state.
+    () => {
+      try {
+        return searchParams.get("prompt") ?? "";
+      } catch {
+        return "";
+      }
+    }
+  );
   const [quality, setQuality] = React.useState<QualityPriority>("auto");
   const [aspectRatio, setAspectRatio] = React.useState<AspectRatio>("4:5");
   const lastSeenStateRef = React.useRef<StudioActionResult>(null);
@@ -261,6 +273,19 @@ export function StudioInput({
         </div>
 
         <ScenarioChips scenarios={scenarios} onPick={onPickScenario} />
+
+        {/* Quiet link to the Playbook — visible to first-time users without
+            crowding the input. The full ?categorized recipe library lives at
+            /playbook. */}
+        <div className="mt-3 text-center">
+          <Link
+            href="/playbook"
+            className="inline-flex items-center gap-1.5 text-xs text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)]"
+          >
+            <BookOpen className="h-3 w-3" />
+            Need ideas? Browse 25+ recipes in the Playbook
+          </Link>
+        </div>
       </form>
     </div>
   );

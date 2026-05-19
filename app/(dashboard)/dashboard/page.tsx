@@ -16,6 +16,10 @@ import {
 } from "lucide-react";
 import { SignedImage } from "@/components/shared/signed-image";
 import { formatRelativeTime } from "@/lib/utils";
+import {
+  rollupBalances,
+  type AccountBalance,
+} from "@/lib/services/billing/budgets";
 
 /** Format tenth-cents (1/1000 USD) → human-readable USD string. */
 function formatSpend(tenthCents: number): string {
@@ -48,6 +52,7 @@ export default async function DashboardPage() {
     { count: productCount },
     { data: todaySpendRows },
     { data: monthSpendRows },
+    { data: lifetimeRows },
   ] = await Promise.all([
     supabase
       .from("projects")
@@ -79,6 +84,14 @@ export default async function DashboardPage() {
       .select("provider_cost_tenth_cents")
       .eq("user_id", user.id)
       .gte("created_at", startOfMonth.toISOString()),
+    // Lifetime spend keyed by provider — drives the per-account balance
+    // cards (Starting → Spent → Remaining). Filter to >0 cost so we don't
+    // pull millions of legacy zero-cost rows when the account is mature.
+    supabase
+      .from("generated_images")
+      .select("provider_used, provider_cost_tenth_cents")
+      .eq("user_id", user.id)
+      .gt("provider_cost_tenth_cents", 0),
   ]);
 
   const sumCost = (rows: { provider_cost_tenth_cents: number | null }[] | null) =>
@@ -87,12 +100,34 @@ export default async function DashboardPage() {
   const monthSpend = sumCost(monthSpendRows);
   const monthImageCount = (monthSpendRows ?? []).length;
 
+  const balances: AccountBalance[] = rollupBalances(lifetimeRows ?? []);
+
   return (
     <>
       <PageHeader
         title="Dashboard"
         description="Pick a creation path or pick up where you left off."
       />
+
+      {/* ----- Provider balances ----------------------------------------- */}
+      {balances.length > 0 && (
+        <div className="mb-6">
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="text-sm font-medium">Provider balances</h2>
+            <span className="text-[11px] text-[var(--color-muted-foreground)]">
+              Edit starting balances in{" "}
+              <code className="rounded bg-[var(--color-secondary)] px-1 py-0.5">
+                lib/services/billing/budgets.ts
+              </code>
+            </span>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {balances.map((b) => (
+              <BalanceCard key={b.account} balance={b} />
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ----- Spend summary --------------------------------------------- */}
       <div className="mb-8 grid gap-3 sm:grid-cols-3">
@@ -248,6 +283,68 @@ function CreationCard({
         <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
       </div>
     </Link>
+  );
+}
+
+function BalanceCard({ balance }: { balance: AccountBalance }) {
+  const hasStarting = balance.startingTenthCents > 0;
+  const pct = Math.round(balance.utilization * 100);
+  // Color the progress bar by burn level so the user can see at a glance
+  // when they're about to run out: <70% green, 70-90% amber, >=90% red.
+  const burnColor =
+    !hasStarting
+      ? "bg-[var(--color-muted-foreground)]"
+      : pct >= 90
+        ? "bg-[var(--color-destructive)]"
+        : pct >= 70
+          ? "bg-amber-500"
+          : "bg-emerald-500";
+  return (
+    <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-secondary)]/30 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-sm font-medium">{balance.label}</div>
+          <div className="mt-0.5 text-[11px] text-[var(--color-muted-foreground)]">
+            {balance.imageCount} image{balance.imageCount === 1 ? "" : "s"} ·{" "}
+            {hasStarting ? `${pct}% used` : "no balance set"}
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="text-2xl font-semibold tabular-nums">
+            {formatSpend(balance.remainingTenthCents)}
+          </div>
+          <div className="text-[10px] uppercase tracking-wider text-[var(--color-muted-foreground)]">
+            remaining
+          </div>
+        </div>
+      </div>
+
+      {hasStarting && (
+        <>
+          <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-secondary)]">
+            <div
+              className={`h-full ${burnColor} transition-[width]`}
+              style={{ width: `${Math.max(2, pct)}%` }}
+            />
+          </div>
+          <div className="mt-1.5 flex items-center justify-between text-[10px] text-[var(--color-muted-foreground)]">
+            <span>
+              Starting {formatSpend(balance.startingTenthCents)}
+            </span>
+            <span>
+              Spent {formatSpend(balance.spentTenthCents)}
+            </span>
+          </div>
+        </>
+      )}
+
+      {!hasStarting && balance.spentTenthCents > 0 && (
+        <div className="mt-2 text-[11px] text-[var(--color-muted-foreground)]">
+          Spent {formatSpend(balance.spentTenthCents)} — set a starting balance
+          in <code>budgets.ts</code> to track the remaining account credit.
+        </div>
+      )}
+    </div>
   );
 }
 

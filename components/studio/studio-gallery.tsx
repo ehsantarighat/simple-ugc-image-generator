@@ -3,7 +3,15 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Download, ExternalLink, X } from "lucide-react";
+import { toast } from "sonner";
+import {
+  Cpu,
+  Download,
+  ExternalLink,
+  Loader2,
+  RefreshCw,
+  X,
+} from "lucide-react";
 import { SignedClientImage } from "@/components/generation/signed-client-image";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -30,6 +38,18 @@ interface Props {
 export function StudioGallery({ images }: Props) {
   const router = useRouter();
   const [active, setActive] = React.useState<StudioImage | null>(null);
+  const [refreshing, startRefresh] = React.useTransition();
+
+  function handleRefresh() {
+    startRefresh(() => {
+      router.refresh();
+      toast.success(
+        images.length === 0
+          ? "Refreshed — no images for your account yet."
+          : `Refreshed — ${images.length} image(s) loaded.`
+      );
+    });
+  }
 
   // Group by ISO day (YYYY-MM-DD) for a "Today / Yesterday / Older" layout.
   const groups = React.useMemo(() => {
@@ -44,15 +64,61 @@ export function StudioGallery({ images }: Props) {
 
   if (images.length === 0) {
     return (
-      <div className="mt-16 rounded-2xl border border-dashed border-[var(--color-border)] py-12 text-center text-sm text-[var(--color-muted-foreground)]">
-        Your generations will show up here as you create them.
+      <div className="mt-12">
+        <div className="mb-3 flex items-center justify-end">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={refreshing}
+            title="Re-fetch the gallery"
+          >
+            {refreshing ? (
+              <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+            ) : (
+              <RefreshCw className="mr-1 h-3 w-3" />
+            )}
+            {refreshing ? "Refreshing…" : "Refresh"}
+          </Button>
+        </div>
+        <div className="rounded-2xl border border-dashed border-[var(--color-border)] py-12 text-center text-sm text-[var(--color-muted-foreground)]">
+          <p>No generations on disk for your account yet.</p>
+          <p className="mt-1 text-xs">
+            If you just hit Send and saw a success toast but the gallery is
+            empty, click Refresh — the new image might be still propagating.
+            You can also check{" "}
+            <Link href="/dashboard" className="underline">
+              the dashboard
+            </Link>{" "}
+            or{" "}
+            <Link href="/projects" className="underline">
+              recent projects
+            </Link>
+            .
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
     <>
-      <div className="mt-12 space-y-8">
+      <div className="mt-12 space-y-6">
+        <div className="flex items-center justify-end">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={refreshing}
+          >
+            {refreshing ? (
+              <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+            ) : (
+              <RefreshCw className="mr-1 h-3 w-3" />
+            )}
+            {refreshing ? "Refreshing…" : "Refresh"}
+          </Button>
+        </div>
         {groups.map(([day, items]) => (
           <section key={day}>
             <div className="mb-3 flex items-end justify-between">
@@ -122,6 +188,8 @@ function Lightbox({
   const ratio = String(meta.target_aspect_ratio ?? meta.size ?? "—");
   const stylePreset = meta.style_preset ? String(meta.style_preset) : null;
   const mode = String(meta.generation_mode ?? meta.creation_mode ?? "—");
+  const provider = meta.provider ? String(meta.provider) : null;
+  const model = meta.model ? String(meta.model) : null;
 
   return (
     <div
@@ -178,6 +246,19 @@ function Lightbox({
               <Badge variant="secondary">{image.image_role}</Badge>
             )}
           </div>
+
+          {(provider || model) && (
+            <div className="flex items-center gap-1.5 rounded-md bg-[var(--color-secondary)]/60 px-2 py-1.5 text-[11px] text-[var(--color-muted-foreground)]">
+              <Cpu className="h-3 w-3 shrink-0" />
+              <span>Made by</span>
+              <span className="font-medium text-[var(--color-foreground)]">
+                {provider ?? model}
+              </span>
+              {provider && model && provider !== model && (
+                <span className="opacity-60">· {model}</span>
+              )}
+            </div>
+          )}
 
           {image.prompt_used && (
             <details className="text-xs">

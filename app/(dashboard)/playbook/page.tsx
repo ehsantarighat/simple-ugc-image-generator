@@ -14,7 +14,10 @@ import {
   scenariosByCategory,
 } from "@/lib/services/generation/scenario-templates";
 
-export const dynamic = "force-static";
+// The parent (dashboard) layout calls requireUser() which reads cookies, so
+// every route under it is dynamic. force-static here would conflict with
+// the layout and fail the build under Next 15.5.
+export const dynamic = "force-dynamic";
 
 export default function PlaybookPage() {
   const groups = scenariosByCategory();

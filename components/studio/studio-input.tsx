@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useActionState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ArrowUp, BookOpen, Loader2, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -48,7 +48,6 @@ export function StudioInput({
   latestImageId = null,
 }: Props) {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [state, formAction, pending] = useActionState<StudioActionResult, FormData>(
     createFromStudioAction,
     null
@@ -57,17 +56,21 @@ export function StudioInput({
   const [mode, setMode] = React.useState<CreationMode>(initialMode);
   const [modelId, setModelId] = React.useState<string | null>(initialModelId);
   const [productId, setProductId] = React.useState<string | null>(initialProductId);
-  const [scene, setScene] = React.useState(
-    // Honor ?prompt=… so Playbook's "Open in Studio" button can prefill the
-    // textarea. Decoded once on mount; further changes go through state.
-    () => {
-      try {
-        return searchParams.get("prompt") ?? "";
-      } catch {
-        return "";
-      }
+  const [scene, setScene] = React.useState("");
+
+  // Honor ?prompt=… so the Playbook's "Open in Studio" button can prefill
+  // the textarea. Read once on mount via window.location to avoid the
+  // useSearchParams() Suspense-boundary requirement in Next 15.5.
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const incoming = params.get("prompt");
+      if (incoming) setScene(incoming);
+    } catch {
+      // no-op — malformed URL, ignore
     }
-  );
+  }, []);
   const [quality, setQuality] = React.useState<QualityPriority>("auto");
   const [aspectRatio, setAspectRatio] = React.useState<AspectRatio>("4:5");
   const lastSeenStateRef = React.useRef<StudioActionResult>(null);

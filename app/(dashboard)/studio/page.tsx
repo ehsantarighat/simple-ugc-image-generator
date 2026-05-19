@@ -1,7 +1,10 @@
 import { requireUser } from "@/lib/supabase/server";
 import { StudioInput } from "@/components/studio/studio-input";
 import { StudioGallery, type StudioImage } from "@/components/studio/studio-gallery";
-import { SCENARIO_TEMPLATES } from "@/lib/services/generation/scenario-templates";
+import {
+  SCENARIO_TEMPLATES,
+  type ScenarioTemplate,
+} from "@/lib/services/generation/scenario-templates";
 import type { Scenario } from "@/components/studio/scenario-chips";
 import Link from "next/link";
 
@@ -67,7 +70,7 @@ export default async function StudioPage() {
   ];
   const featured = FEATURED_SCENARIO_IDS
     .map((id) => SCENARIO_TEMPLATES.find((t) => t.id === id))
-    .filter((t): t is (typeof SCENARIO_TEMPLATES)[number] => !!t);
+    .filter(Boolean) as ScenarioTemplate[];
   const baseScenarios = featured.length === 5 ? featured : SCENARIO_TEMPLATES.slice(0, 5);
   const scenarios: Scenario[] = baseScenarios.map((t) => ({
     id: t.id,

@@ -40,9 +40,11 @@ const bodySchema = z.object({
   aspectRatio: z.enum(["1:1", "4:5", "9:16", "16:9"]).optional().default("1:1"),
 });
 
-// Hard cap per provider so the test page doesn't sit on an unresponsive
-// adapter forever. 90s is a generous window for any image-edit call.
-const PROVIDER_TIMEOUT_MS = 90_000;
+// Hard cap per provider. gpt-image-2 routinely takes 60–120s for image
+// edits with multiple references; 180s gives slow-but-valid responses
+// room to complete while still aborting truly hung connections before
+// Railway's proxy (~300s) drops the request.
+const PROVIDER_TIMEOUT_MS = 180_000;
 
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {

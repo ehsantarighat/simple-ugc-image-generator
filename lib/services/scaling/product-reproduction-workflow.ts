@@ -133,6 +133,9 @@ export async function runProductReproduction(
   );
 
   const generatedImageIds: string[] = [];
+  // Capture the first per-output failure so we can bubble it up — currently
+  // the workflow swallows them as "Generation failed" with no detail.
+  let firstError: string | null = null;
   // Track an anchor per style so subsequent ratios of the same style can
   // re-shoot from the anchor instead of drifting.
   const anchorByStyle = new Map<
@@ -269,6 +272,7 @@ export async function runProductReproduction(
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      if (!firstError) firstError = msg;
       await svc
         .from("generation_requests")
         .update({ status: "failed", error_message: msg })
@@ -280,5 +284,9 @@ export async function runProductReproduction(
     status: generatedImageIds.length > 0 ? "completed" : "failed",
     generatedImageIds,
     estimatedCallCount: plan.estimatedCallCount,
+    errorMessage:
+      generatedImageIds.length === 0 && firstError
+        ? firstError
+        : undefined,
   };
 }

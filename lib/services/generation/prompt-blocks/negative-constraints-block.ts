@@ -6,6 +6,13 @@ import type {
 } from "@/lib/services/generation/payload-schema";
 
 const BASE_NEGATIVE_CONSTRAINTS: readonly string[] = [
+  // Composition-shape failures (collage/grid) listed FIRST because they
+  // are the most expensive failure mode — the whole image is unusable.
+  "avoid producing a collage, grid, or panel of multiple images",
+  "avoid showing the reference images alongside the generated subject",
+  "avoid before/after, side-by-side, or comparison layouts",
+  "avoid duplicating the model or the product within a single frame",
+  // Realism / fidelity
   "avoid synthetic AI-art appearance",
   "avoid CGI or 3D render look",
   "avoid plastic or overly smoothed skin",

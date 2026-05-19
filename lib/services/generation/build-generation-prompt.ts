@@ -10,6 +10,7 @@ import type {
   StructuredGenerationPayload,
 } from "@/lib/services/generation/payload-schema";
 import { buildTaskBlock } from "@/lib/services/generation/prompt-blocks/task-block";
+import { buildOutputFormatBlock } from "@/lib/services/generation/prompt-blocks/output-format-block";
 import { buildReferenceBlock } from "@/lib/services/generation/prompt-blocks/reference-block";
 import { buildSubjectModeBlock } from "@/lib/services/generation/prompt-blocks/subject-mode-block";
 import { buildStyleModeBlock } from "@/lib/services/generation/prompt-blocks/style-mode-block";
@@ -24,6 +25,10 @@ import {
 } from "@/lib/services/generation/prompt-blocks/realism-block";
 import { buildNegativeConstraintBlock } from "@/lib/services/generation/prompt-blocks/negative-constraints-block";
 import { buildOutputIntentBlock } from "@/lib/services/generation/prompt-blocks/output-intent-block";
+import {
+  buildWardrobeSwapBlock,
+  detectIsApparel,
+} from "@/lib/services/generation/prompt-blocks/wardrobe-swap-block";
 
 export interface BuildGenerationPromptArgs {
   payload: StructuredGenerationPayload;
@@ -52,6 +57,11 @@ export function buildGenerationPrompt(args: BuildGenerationPromptArgs): string {
   const isProductOnly = payload.subjectMode === "product_only";
   const sections: string[] = [];
 
+  // OUTPUT FORMAT must come first — it's the only thing preventing the
+  // image model from collaging the inputs when given many references.
+  sections.push(buildOutputFormatBlock());
+  sections.push("");
+
   sections.push(buildTaskBlock(payload.mode));
   sections.push("");
   sections.push(
@@ -67,14 +77,30 @@ export function buildGenerationPrompt(args: BuildGenerationPromptArgs): string {
   sections.push("");
   sections.push(buildStyleModeBlock(payload.styleMode));
 
+  // Detect apparel/wearable products so we can swap "preserve outfit" for
+  // an explicit wardrobe-swap instruction. Only relevant when a model is
+  // in the frame.
+  const isApparel =
+    !isProductOnly &&
+    detectIsApparel({
+      category: payload.product.inferredCategory,
+      product: payload.product,
+    });
+
   if (!isProductOnly && payload.model) {
     sections.push("");
     sections.push(
       buildModelPreservationBlock({
         rules: payload.modelPreservation,
         model: payload.model,
+        hasWardrobeSwap: isApparel,
       })
     );
+  }
+
+  if (isApparel) {
+    sections.push("");
+    sections.push(buildWardrobeSwapBlock({ product: payload.product }));
   }
 
   sections.push("");

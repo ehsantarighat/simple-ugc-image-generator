@@ -48,15 +48,23 @@ import type {
   ImageProvider,
 } from "@/lib/services/providers/image-provider-interface";
 
+// Ordering matters: at equal qualityPriority tier, the first entry wins. We
+// deliberately put the fal-routed adapters before gpt-image-2 because the
+// test bench shows fal returns in 12–30s while gpt-image-2 occasionally takes
+// 180s+ (occasionally hitting our per-call timeout). gpt-image-2 stays in
+// the premium tier so it still serves as a fallback / explicit choice via
+// preferredProviderId, but it's no longer the default.
 const PROVIDERS: ImageProvider[] = [
-  gptImage2Provider,
+  // --- Premium, fal-routed (fast + reliable) ---
   falFluxKontextMulti,
-  falNanoBananaEdit,
   falRecraftV3,
   falSeedreamV4Edit,
   falIdeogramV3,
-  // Native adapters confirmed working by /test bench.
+  // --- Premium, native (slower / less consistent) ---
   recraftProvider,
+  gptImage2Provider,
+  // --- Standard tier ---
+  falNanoBananaEdit,
   geminiProvider,
 ];
 

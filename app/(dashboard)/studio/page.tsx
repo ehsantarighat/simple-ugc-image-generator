@@ -1,5 +1,6 @@
 import { requireUser } from "@/lib/supabase/server";
 import { StudioInput } from "@/components/studio/studio-input";
+import { StudioGallery, type StudioImage } from "@/components/studio/studio-gallery";
 import { SCENARIO_TEMPLATES } from "@/lib/services/generation/scenario-templates";
 import type { Scenario } from "@/components/studio/scenario-chips";
 import Link from "next/link";
@@ -9,22 +10,32 @@ export const dynamic = "force-dynamic";
 export default async function StudioPage() {
   const { supabase, user } = await requireUser();
 
-  const [{ data: models }, { data: products }] = await Promise.all([
-    supabase
-      .from("models")
-      .select("id, name")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false }),
-    supabase
-      .from("products")
-      .select("id, name")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false }),
-  ]);
+  const [{ data: models }, { data: products }, { data: imageRows }] =
+    await Promise.all([
+      supabase
+        .from("models")
+        .select("id, name")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("products")
+        .select("id, name")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false }),
+      // Load up to 60 most-recent generations across all projects, joined
+      // with the project for the lightbox's title + link.
+      supabase
+        .from("generated_images")
+        .select(
+          `id, storage_path, project_id, prompt_used, image_role,
+           metadata_json, created_at,
+           project:projects(title)`
+        )
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(60),
+    ]);
 
-  // Surface 5 of our pre-canned scenarios as starter chips. The full
-  // template (controls + ratio) gets re-derived server-side from defaults;
-  // the chip just seeds the prompt for now.
   const scenarios: Scenario[] = SCENARIO_TEMPLATES.slice(0, 5).map((t) => ({
     id: t.id,
     title: t.title,
@@ -35,8 +46,25 @@ export default async function StudioPage() {
   const hasModels = (models?.length ?? 0) > 0;
   const hasProducts = (products?.length ?? 0) > 0;
 
+  const images: StudioImage[] = (imageRows ?? []).map((row) => {
+    const projectRel = Array.isArray(row.project) ? row.project[0] : row.project;
+    return {
+      id: row.id as string,
+      storage_path: row.storage_path as string,
+      project_id: row.project_id as string,
+      project_title: projectRel?.title ?? null,
+      prompt_used: (row.prompt_used as string) ?? null,
+      image_role: (row.image_role as string) ?? null,
+      metadata_json:
+        typeof row.metadata_json === "object" && row.metadata_json !== null
+          ? (row.metadata_json as Record<string, unknown>)
+          : null,
+      created_at: row.created_at as string,
+    };
+  });
+
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col items-center justify-center py-12 md:py-20">
+    <div className="mx-auto flex w-full max-w-5xl flex-col py-12 md:py-16">
       <h1 className="mb-1 text-center text-2xl font-semibold tracking-tight md:text-3xl">
         What can I create for you?
       </h1>
@@ -44,7 +72,7 @@ export default async function StudioPage() {
         Describe the scene. Attach a product (and a model for UGC). Hit send.
       </p>
 
-      <div className="w-full">
+      <div className="mx-auto w-full max-w-3xl">
         <StudioInput
           models={models ?? []}
           products={products ?? []}
@@ -53,9 +81,8 @@ export default async function StudioPage() {
         />
       </div>
 
-      {/* Empty-library guidance — only shows when the user is missing assets */}
       {(!hasProducts || !hasModels) && (
-        <div className="mt-10 flex flex-wrap items-center justify-center gap-3 text-xs text-[var(--color-muted-foreground)]">
+        <div className="mx-auto mt-10 flex max-w-3xl flex-wrap items-center justify-center gap-3 text-xs text-[var(--color-muted-foreground)]">
           {!hasProducts && (
             <Link
               href="/products/new"
@@ -74,6 +101,8 @@ export default async function StudioPage() {
           )}
         </div>
       )}
+
+      <StudioGallery images={images} />
     </div>
   );
 }

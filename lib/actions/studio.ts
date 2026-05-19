@@ -1,6 +1,6 @@
 "use server";
 
-import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireUser } from "@/lib/supabase/server";
 import { runGeneration } from "@/lib/services/image-generation-service";
@@ -23,9 +23,9 @@ import type { PhotographyControls } from "@/types";
 //      quality_priority + subject_mode + style_mode.
 //   3. Kick off the right workflow (Mode A: product reproduction;
 //      Mode B: UGC composite) synchronously inside this request.
-//   4. Redirect the browser to /projects/[id] so the user lands on their
-//      project workspace with the generation already done (or failed,
-//      surfaced inline).
+//   4. Return the new projectId + generatedImageIds and revalidate /studio
+//      so the inline gallery re-renders with the new image. The browser
+//      stays on /studio — no redirect — preserving the chat-style flow.
 // ============================================================================
 
 const studioInputSchema = z.object({
@@ -47,7 +47,7 @@ export type StudioInput = z.infer<typeof studioInputSchema>;
 
 export type StudioActionResult =
   | { ok: false; message: string }
-  | { ok: true; projectId: string }
+  | { ok: true; projectId: string; generatedImageIds: string[] }
   | null;
 
 // Default photography controls — same shape Mode B uses, lightly tuned for
@@ -77,7 +77,6 @@ export async function createFromStudioAction(
   _prev: StudioActionResult,
   formData: FormData
 ): Promise<StudioActionResult> {
-  let createdProjectId: string | null = null;
   try {
     const parsed = studioInputSchema.parse({
       creationMode: formData.get("creationMode"),
@@ -120,9 +119,10 @@ export async function createFromStudioAction(
         message: `Failed to create project: ${projectErr?.message ?? "unknown"}`,
       };
     }
-    createdProjectId = project.id as string;
+    const createdProjectId = project.id as string;
 
     // Branch on creation mode. Both workflows run synchronously.
+    let generatedImageIds: string[] = [];
     if (isProductOnly) {
       const result = await runProductReproduction({
         userId: user.id,
@@ -146,6 +146,7 @@ export async function createFromStudioAction(
           message: result.errorMessage ?? "Generation failed",
         };
       }
+      generatedImageIds = result.generatedImageIds;
     } else {
       const result = await runGeneration({
         userId: user.id,
@@ -163,7 +164,13 @@ export async function createFromStudioAction(
           message: result.errorMessage ?? "Generation failed",
         };
       }
+      generatedImageIds = result.generatedImageIds;
     }
+
+    // Re-render /studio so the new image shows up in the inline gallery
+    // without a hard redirect away from the chat surface.
+    revalidatePath("/studio");
+    return { ok: true, projectId: createdProjectId, generatedImageIds };
   } catch (err) {
     if (err instanceof z.ZodError) {
       return {
@@ -176,6 +183,4 @@ export async function createFromStudioAction(
       message: err instanceof Error ? err.message : "Unknown error",
     };
   }
-  if (createdProjectId) redirect(`/projects/${createdProjectId}`);
-  return null;
 }

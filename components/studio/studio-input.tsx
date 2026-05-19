@@ -2,6 +2,8 @@
 
 import * as React from "react";
 import { useActionState } from "react";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { ArrowUp, Loader2, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ModeToggle, type CreationMode } from "@/components/studio/mode-toggle";
@@ -39,6 +41,7 @@ export function StudioInput({
   initialModelId = null,
   initialProductId = null,
 }: Props) {
+  const router = useRouter();
   const [state, formAction, pending] = useActionState<StudioActionResult, FormData>(
     createFromStudioAction,
     null
@@ -50,6 +53,27 @@ export function StudioInput({
   const [scene, setScene] = React.useState("");
   const [quality, setQuality] = React.useState<QualityPriority>("auto");
   const [aspectRatio, setAspectRatio] = React.useState<AspectRatio>("4:5");
+  const lastSeenStateRef = React.useRef<StudioActionResult>(null);
+
+  // When the server action returns, toast the result and refresh the page
+  // so the new image lands in the inline gallery below. Don't redirect.
+  React.useEffect(() => {
+    if (!state || state === lastSeenStateRef.current) return;
+    lastSeenStateRef.current = state;
+    if (state.ok === true) {
+      toast.success(
+        state.generatedImageIds.length > 0
+          ? `Done — ${state.generatedImageIds.length} new image below.`
+          : "Done."
+      );
+      // Clear just the prompt so the user can iterate with the same
+      // model + product attached.
+      setScene("");
+      router.refresh();
+    } else if (state.ok === false) {
+      toast.error(state.message);
+    }
+  }, [state, router]);
 
   const isUgcMode = mode === "ugc_model_product";
   const selectedModel = models.find((m) => m.id === modelId);

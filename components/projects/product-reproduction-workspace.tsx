@@ -176,6 +176,21 @@ const KNOWN_PLATFORMS: ReadonlySet<string> = new Set([
 
 export function ProductReproductionWorkspace(props: Props) {
   const router = useRouter();
+  const [refreshing, startRefresh] = React.useTransition();
+
+  function handleRefresh() {
+    startRefresh(() => {
+      router.refresh();
+      // The transition pending state stays true until React re-renders
+      // with the new server data. Show a toast so the click is acknowledged
+      // even when no rows changed.
+      toast.success(
+        props.requests.length === 0
+          ? "Refreshed — no runs in this project yet."
+          : `Refreshed — ${props.requests.length} run(s) on disk.`
+      );
+    });
+  }
   const [productId, setProductId] = React.useState<string>(props.initialProductId ?? "");
   const [styles, setStyles] = React.useState<Set<ProductReproductionStyle>>(() => {
     const incoming = (props.initialStyles ?? []).filter((s) => KNOWN_STYLES.has(s));
@@ -545,10 +560,16 @@ export function ProductReproductionWorkspace(props: Props) {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => router.refresh()}
+              onClick={handleRefresh}
+              disabled={refreshing}
               title="Re-fetch outputs from the database"
             >
-              <RefreshCw className="mr-1 h-3 w-3" /> Refresh
+              {refreshing ? (
+                <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-1 h-3 w-3" />
+              )}
+              {refreshing ? "Refreshing…" : "Refresh"}
             </Button>
           </div>
         </div>

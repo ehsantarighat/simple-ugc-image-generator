@@ -28,6 +28,10 @@ interface Props {
   initialMode?: CreationMode;
   initialModelId?: string | null;
   initialProductId?: string | null;
+  // Most recent generated_images.id at render time. Changes when a new
+  // image lands in the gallery, letting the poll loop break out the
+  // instant the work completes (instead of waiting for the 3-min timeout).
+  latestImageId?: string | null;
 }
 
 const ASPECT_RATIOS = ["1:1", "4:5", "9:16", "16:9"] as const;
@@ -40,6 +44,7 @@ export function StudioInput({
   initialMode = "ugc_model_product",
   initialModelId = null,
   initialProductId = null,
+  latestImageId = null,
 }: Props) {
   const router = useRouter();
   const [state, formAction, pending] = useActionState<StudioActionResult, FormData>(
@@ -54,26 +59,67 @@ export function StudioInput({
   const [quality, setQuality] = React.useState<QualityPriority>("auto");
   const [aspectRatio, setAspectRatio] = React.useState<AspectRatio>("4:5");
   const lastSeenStateRef = React.useRef<StudioActionResult>(null);
+  // While background generation is in flight, we keep polling the page's
+  // server-side query every few seconds so the new image lands in the
+  // gallery without the user needing to hit Refresh.
+  const [waitingFor, setWaitingFor] = React.useState<string | null>(null);
+  const [waitedSeconds, setWaitedSeconds] = React.useState(0);
+  // Remember what the latest image was when polling began. As soon as the
+  // prop value differs, we know a new image landed and can stop polling.
+  const [baselineImageId, setBaselineImageId] = React.useState<string | null>(null);
 
-  // When the server action returns, toast the result and refresh the page
-  // so the new image lands in the inline gallery below. Don't redirect.
+  // React to action result: action now returns fast with { queued: true }
+  // and the workflow runs detached on the server. We start a polling loop
+  // that calls router.refresh() until something new shows up in the gallery
+  // (handled by the parent page's revalidatePath / our render cycle).
   React.useEffect(() => {
     if (!state || state === lastSeenStateRef.current) return;
     lastSeenStateRef.current = state;
     if (state.ok === true) {
-      toast.success(
-        state.generatedImageIds.length > 0
-          ? `Done — ${state.generatedImageIds.length} new image below.`
-          : "Done."
-      );
-      // Clear just the prompt so the user can iterate with the same
-      // model + product attached.
+      toast.success("Generation queued — your image will appear below.");
       setScene("");
-      router.refresh();
+      setWaitingFor(state.projectId);
+      setWaitedSeconds(0);
+      setBaselineImageId(latestImageId);
     } else if (state.ok === false) {
       toast.error(state.message);
     }
-  }, [state, router]);
+  }, [state, latestImageId]);
+
+  // Auto-stop polling the moment a new image arrives in the gallery.
+  React.useEffect(() => {
+    if (!waitingFor) return;
+    if (latestImageId && latestImageId !== baselineImageId) {
+      setWaitingFor(null);
+      toast.success("Your new image is below.");
+    }
+  }, [latestImageId, baselineImageId, waitingFor]);
+
+  // Poll loop: while we're waiting on a queued generation, refresh the
+  // server data every 4s and bump a counter so the UI can show "waited Xs".
+  React.useEffect(() => {
+    if (!waitingFor) return;
+    let elapsed = 0;
+    const interval = window.setInterval(() => {
+      elapsed += 4;
+      setWaitedSeconds(elapsed);
+      router.refresh();
+      // Give up after 3 minutes — well past typical OpenAI image-edit time.
+      if (elapsed >= 180) {
+        clearInterval(interval);
+        setWaitingFor(null);
+        toast.error(
+          "Still waiting after 3 minutes. Check the project page for the actual status."
+        );
+      }
+    }, 4000);
+    return () => window.clearInterval(interval);
+  }, [waitingFor, router]);
+
+  // When new images for the waited-on project show up in the URL hash of
+  // children, we'd ideally stop polling. Without a direct signal we rely
+  // on the 3-minute timeout. A future improvement: pass a "latest image id
+  // for project X" prop down so we can break out as soon as it changes.
 
   const isUgcMode = mode === "ugc_model_product";
   const selectedModel = models.find((m) => m.id === modelId);
@@ -195,7 +241,13 @@ export function StudioInput({
         <div className="mt-2 min-h-[1.25rem] text-center text-xs">
           {pending ? (
             <span className="text-[var(--color-muted-foreground)]">
-              Creating your project and generating the first shot… this takes 30–90 seconds.
+              Queuing your generation…
+            </span>
+          ) : waitingFor ? (
+            <span className="inline-flex items-center gap-1.5 text-[var(--color-muted-foreground)]">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Generating in background — {waitedSeconds}s elapsed. The image
+              will appear below when ready.
             </span>
           ) : state && state.ok === false ? (
             <span className="text-[var(--color-destructive)]">{state.message}</span>

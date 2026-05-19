@@ -78,6 +78,7 @@ export default async function StudioPage() {
           products={products ?? []}
           scenarios={scenarios}
           initialMode={hasModels ? "ugc_model_product" : "product_reproduction"}
+          latestImageId={images[0]?.id ?? null}
         />
       </div>
 

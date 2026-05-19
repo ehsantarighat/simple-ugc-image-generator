@@ -14,18 +14,26 @@ import type { PhotographyControls } from "@/types";
 
 // ============================================================================
 // createFromStudio
-// Single-shot creation surface action — fast-path equivalent of New Project +
-// Generate. Used by /studio.
+// Fast-path creation surface action used by /studio. CRITICAL DESIGN:
 //
-// Flow:
-//   1. Validate input (mode-aware).
-//   2. Insert a new projects row stamped with the chosen creation_mode +
-//      quality_priority + subject_mode + style_mode.
-//   3. Kick off the right workflow (Mode A: product reproduction;
-//      Mode B: UGC composite) synchronously inside this request.
-//   4. Return the new projectId + generatedImageIds and revalidate /studio
-//      so the inline gallery re-renders with the new image. The browser
-//      stays on /studio — no redirect — preserving the chat-style flow.
+// The OpenAI image-edit call takes 30–90 seconds. Hosting proxies (Railway's,
+// Vercel's edge, most CDNs) commonly kill HTTP responses that don't return in
+// time, producing 502s before our server-side code ever finishes. To avoid
+// that class of failure, we:
+//
+//   1. Synchronously do the cheap work — validate input, insert the projects
+//      row — and return projectId in <1 second.
+//   2. Kick off the actual generation as a DETACHED Promise. Railway (and
+//      similar long-lived Node hosts) keep the Node process alive between
+//      requests, so the workflow continues to run after the HTTP response is
+//      already on the wire.
+//   3. The client polls /studio (via router.refresh) until the new image
+//      lands in the gallery query, then stops.
+//
+// This pattern is not safe on serverless platforms that freeze the function
+// when the response is sent (Lambda, Vercel Functions). It IS safe on
+// Railway, Render, Fly, and any long-lived Node host. If we ever move to
+// serverless, replace this with a real queue + worker.
 // ============================================================================
 
 const studioInputSchema = z.object({
@@ -47,11 +55,9 @@ export type StudioInput = z.infer<typeof studioInputSchema>;
 
 export type StudioActionResult =
   | { ok: false; message: string }
-  | { ok: true; projectId: string; generatedImageIds: string[] }
+  | { ok: true; projectId: string; queued: true }
   | null;
 
-// Default photography controls — same shape Mode B uses, lightly tuned for
-// "fast path." User can refine later on the project page.
 function defaultControls(aspectRatio: "1:1" | "4:5" | "9:16" | "16:9"): PhotographyControls {
   return {
     shotType: "candid_lifestyle",
@@ -120,12 +126,15 @@ export async function createFromStudioAction(
       };
     }
     const createdProjectId = project.id as string;
+    const userId = user.id;
 
-    // Branch on creation mode. Both workflows run synchronously.
-    let generatedImageIds: string[] = [];
+    // Detach the workflow. We DO NOT await it. Node's event loop keeps it
+    // alive after we return; Railway keeps the process alive between
+    // requests. Errors are written to generation_requests.error_message by
+    // the workflow itself, and surfaced to the gallery via revalidatePath.
     if (isProductOnly) {
-      const result = await runProductReproduction({
-        userId: user.id,
+      void runProductReproduction({
+        userId,
         projectId: createdProjectId,
         productId: parsed.productId,
         styles: [parsed.stylePreset ?? "studio_white_background"] as Parameters<
@@ -139,17 +148,18 @@ export async function createFromStudioAction(
           typeof runProductReproduction
         >[0]["qualityPriority"],
         intentNotes: parsed.scenePrompt,
-      });
-      if (result.status === "failed") {
-        return {
-          ok: false,
-          message: result.errorMessage ?? "Generation failed",
-        };
-      }
-      generatedImageIds = result.generatedImageIds;
+      })
+        .then(() => {
+          revalidatePath("/studio");
+        })
+        .catch((err: unknown) => {
+          // eslint-disable-next-line no-console
+          console.error("[studio] background reproduction failed:", err);
+          revalidatePath("/studio");
+        });
     } else {
-      const result = await runGeneration({
-        userId: user.id,
+      void runGeneration({
+        userId,
         projectId: createdProjectId,
         modelId: parsed.modelId!,
         productId: parsed.productId,
@@ -157,20 +167,18 @@ export async function createFromStudioAction(
         controls: defaultControls(parsed.aspectRatio),
         subjectMode: "product_with_model",
         styleMode: "ugc",
-      });
-      if (result.status === "failed") {
-        return {
-          ok: false,
-          message: result.errorMessage ?? "Generation failed",
-        };
-      }
-      generatedImageIds = result.generatedImageIds;
+      })
+        .then(() => {
+          revalidatePath("/studio");
+        })
+        .catch((err: unknown) => {
+          // eslint-disable-next-line no-console
+          console.error("[studio] background generation failed:", err);
+          revalidatePath("/studio");
+        });
     }
 
-    // Re-render /studio so the new image shows up in the inline gallery
-    // without a hard redirect away from the chat surface.
-    revalidatePath("/studio");
-    return { ok: true, projectId: createdProjectId, generatedImageIds };
+    return { ok: true, projectId: createdProjectId, queued: true };
   } catch (err) {
     if (err instanceof z.ZodError) {
       return {

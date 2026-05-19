@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
 import {
+  AlertTriangle,
   Cpu,
   Download,
   ExternalLink,
@@ -28,14 +29,23 @@ export interface StudioImage {
   created_at: string;
 }
 
+export interface RecentFailure {
+  id: string;
+  status: string;
+  error_message: string | null;
+  generation_mode: string | null;
+  created_at: string;
+}
+
 interface Props {
   images: StudioImage[];
+  recentFailure?: RecentFailure | null;
 }
 
 // Studio gallery — renders all of the user's recent generated images in a
 // flat grid, grouped by day. Clicking an image opens a lightbox preview
 // with download + open-project links so the user never has to leave /studio.
-export function StudioGallery({ images }: Props) {
+export function StudioGallery({ images, recentFailure = null }: Props) {
   const router = useRouter();
   const [active, setActive] = React.useState<StudioImage | null>(null);
   const [refreshing, startRefresh] = React.useTransition();
@@ -81,6 +91,7 @@ export function StudioGallery({ images }: Props) {
             {refreshing ? "Refreshing…" : "Refresh"}
           </Button>
         </div>
+        <FailureBanner failure={recentFailure} />
         <div className="rounded-2xl border border-dashed border-[var(--color-border)] py-12 text-center text-sm text-[var(--color-muted-foreground)]">
           <p>No generations on disk for your account yet.</p>
           <p className="mt-1 text-xs">
@@ -104,6 +115,7 @@ export function StudioGallery({ images }: Props) {
   return (
     <>
       <div className="mt-12 space-y-6">
+        <FailureBanner failure={recentFailure} />
         <div className="flex items-center justify-end">
           <Button
             variant="outline"
@@ -288,6 +300,33 @@ function Lightbox({
             </Button>
           </div>
         </aside>
+      </div>
+    </div>
+  );
+}
+
+function FailureBanner({ failure }: { failure: RecentFailure | null }) {
+  if (!failure) return null;
+  const isStuck = failure.status === "generating";
+  const elapsedMin = Math.round(
+    (Date.now() - new Date(failure.created_at).getTime()) / 60_000
+  );
+  return (
+    <div className="flex items-start gap-2 rounded-md border border-[var(--color-destructive)]/30 bg-[var(--color-destructive)]/5 p-3 text-xs text-[var(--color-destructive)]">
+      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+      <div className="space-y-0.5">
+        <div className="font-medium">
+          {isStuck
+            ? `Last run is stuck mid-flight (started ${elapsedMin} min ago)`
+            : "Last run failed"}
+        </div>
+        <div className="break-words">
+          {failure.error_message ?? "No error message recorded."}
+        </div>
+        <div className="text-[10px] opacity-70">
+          {failure.generation_mode?.replace(/_/g, " ") ?? "unknown mode"} ·{" "}
+          {new Date(failure.created_at).toLocaleTimeString()}
+        </div>
       </div>
     </div>
   );

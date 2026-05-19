@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export default async function StudioPage() {
   const { supabase, user } = await requireUser();
 
-  const [{ data: models }, { data: products }, { data: imageRows }] =
+  const [{ data: models }, { data: products }, { data: imageRows }, { data: recentRequests }] =
     await Promise.all([
       supabase
         .from("models")
@@ -22,8 +22,6 @@ export default async function StudioPage() {
         .select("id, name")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false }),
-      // Load up to 60 most-recent generations across all projects, joined
-      // with the project for the lightbox's title + link.
       supabase
         .from("generated_images")
         .select(
@@ -34,7 +32,27 @@ export default async function StudioPage() {
         .eq("user_id", user.id)
         .order("created_at", { ascending: false })
         .limit(60),
+      // Latest few generation_requests so we can surface failures /
+      // stuck-generating runs at the top of the gallery.
+      supabase
+        .from("generation_requests")
+        .select(
+          "id, status, error_message, generation_mode, created_at"
+        )
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(5),
     ]);
+
+  // Most-recent failed / stuck request (if any) — the gallery surfaces it.
+  const recentFailure =
+    (recentRequests ?? []).find(
+      (r) =>
+        r.status === "failed" ||
+        // Stuck-generating: started but never finished within 5 min.
+        (r.status === "generating" &&
+          new Date(r.created_at).getTime() < Date.now() - 5 * 60_000)
+    ) ?? null;
 
   const scenarios: Scenario[] = SCENARIO_TEMPLATES.slice(0, 5).map((t) => ({
     id: t.id,
@@ -103,7 +121,7 @@ export default async function StudioPage() {
         </div>
       )}
 
-      <StudioGallery images={images} />
+      <StudioGallery images={images} recentFailure={recentFailure} />
     </div>
   );
 }

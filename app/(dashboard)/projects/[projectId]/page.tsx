@@ -67,6 +67,44 @@ export default async function ProjectDetailPage({
     project.output_scope === "multi_concept_pack" ||
     project.output_scope === "full_campaign_pack";
 
+  // Reconstitute Mode A config from the most recent generation requests so
+  // the workspace's config panel shows what the user picked last time,
+  // not a fresh-project default.
+  type Req = NonNullable<typeof requests>[number] & {
+    style_preset?: string | null;
+    target_aspect_ratio?: string | null;
+    target_platform?: string | null;
+    raw_scene_prompt?: string | null;
+  };
+  const reqs = (requests ?? []) as unknown as Req[];
+  const reproductionReqs = reqs.filter(
+    (r) =>
+      r.generation_mode === "product_reproduction_generation" ||
+      r.generation_mode === "ratio_variant_generation"
+  );
+  const lastStyles = Array.from(
+    new Set(
+      reproductionReqs
+        .map((r) => r.style_preset)
+        .filter((s): s is string => !!s)
+    )
+  );
+  const lastRatios = Array.from(
+    new Set(
+      reproductionReqs
+        .map((r) => r.target_aspect_ratio)
+        .filter((r): r is string => !!r)
+    )
+  );
+  const lastPlatforms = Array.from(
+    new Set(
+      reproductionReqs
+        .map((r) => r.target_platform)
+        .filter((p): p is string => !!p)
+    )
+  );
+  const lastIntent = reproductionReqs[0]?.raw_scene_prompt ?? null;
+
   return (
     <>
       <PageHeader
@@ -97,6 +135,10 @@ export default async function ProjectDetailPage({
           projectId={project.id}
           initialProductId={project.selected_product_id}
           products={products ?? []}
+          initialStyles={lastStyles}
+          initialRatios={lastRatios}
+          initialPlatforms={lastPlatforms}
+          initialIntent={lastIntent ?? undefined}
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           requests={(requests ?? []) as any}
         />

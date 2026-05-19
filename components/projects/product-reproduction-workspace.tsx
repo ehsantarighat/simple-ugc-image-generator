@@ -80,6 +80,12 @@ interface Props {
   initialProductId: string | null;
   products: Option[];
   requests: RequestRow[];
+  // Pre-populated from the most recent generation requests so the panel
+  // remembers what the user picked last time.
+  initialStyles?: string[];
+  initialRatios?: string[];
+  initialPlatforms?: string[];
+  initialIntent?: string;
 }
 
 const STYLES: { value: ProductReproductionStyle; title: string; body: string }[] = [
@@ -140,18 +146,57 @@ interface PlanResult {
   notes: string[];
 }
 
+// Known-valid id sets — used to safely cast inbound server strings to the
+// enum types without blowing up on unknown values from older rows.
+const KNOWN_STYLES: ReadonlySet<string> = new Set([
+  "studio_white_background",
+  "studio_colored_background",
+  "studio_tabletop",
+  "flat_lay",
+  "catalog_premium",
+  "lifestyle_product_only",
+  "shelf_scene",
+  "desk_scene",
+  "bathroom_scene",
+  "minimal_brand_scene",
+]);
+const KNOWN_RATIOS: ReadonlySet<string> = new Set(["1:1", "4:5", "9:16", "16:9"]);
+const KNOWN_PLATFORMS: ReadonlySet<string> = new Set([
+  "instagram_feed",
+  "instagram_story",
+  "tiktok",
+  "meta_ads",
+  "product_page",
+  "marketplace_listing",
+  "website_banner",
+  "landing_page",
+  "email_banner",
+  "other",
+]);
+
 export function ProductReproductionWorkspace(props: Props) {
   const router = useRouter();
   const [productId, setProductId] = React.useState<string>(props.initialProductId ?? "");
-  const [styles, setStyles] = React.useState<Set<ProductReproductionStyle>>(
-    () => new Set(["studio_white_background"])
-  );
-  const [ratios, setRatios] = React.useState<Set<AspectRatio>>(() => new Set(["1:1"]));
-  const [platforms, setPlatforms] = React.useState<Set<PlatformTarget>>(new Set());
+  const [styles, setStyles] = React.useState<Set<ProductReproductionStyle>>(() => {
+    const incoming = (props.initialStyles ?? []).filter((s) => KNOWN_STYLES.has(s));
+    return incoming.length > 0
+      ? (new Set(incoming) as Set<ProductReproductionStyle>)
+      : new Set<ProductReproductionStyle>(["studio_white_background"]);
+  });
+  const [ratios, setRatios] = React.useState<Set<AspectRatio>>(() => {
+    const incoming = (props.initialRatios ?? []).filter((r) => KNOWN_RATIOS.has(r));
+    return incoming.length > 0
+      ? (new Set(incoming) as Set<AspectRatio>)
+      : new Set<AspectRatio>(["1:1"]);
+  });
+  const [platforms, setPlatforms] = React.useState<Set<PlatformTarget>>(() => {
+    const incoming = (props.initialPlatforms ?? []).filter((p) => KNOWN_PLATFORMS.has(p));
+    return new Set<PlatformTarget>(incoming as PlatformTarget[]);
+  });
   const [generateAllFormats, setGenerateAllFormats] = React.useState(false);
   const [scope, setScope] = React.useState<OutputScope>("multi_format_pack");
   const [quality, setQuality] = React.useState<QualityPriority>("auto");
-  const [intentNotes, setIntentNotes] = React.useState("");
+  const [intentNotes, setIntentNotes] = React.useState(props.initialIntent ?? "");
   const [plan, setPlan] = React.useState<PlanResult | null>(null);
   const [planning, setPlanning] = React.useState(false);
   const [running, setRunning] = React.useState(false);

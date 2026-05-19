@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Camera, Loader2, Download } from "lucide-react";
+import { Camera, Loader2, Download, RefreshCw, AlertTriangle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -493,15 +493,43 @@ export function ProductReproductionWorkspace(props: Props) {
       <div>
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-medium">Reproductions</h2>
-          <span className="text-xs text-[var(--color-muted-foreground)]">
-            {allOutputs.length} output(s)
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-[var(--color-muted-foreground)]">
+              {props.requests.length} run(s) · {allOutputs.length} output(s)
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => router.refresh()}
+              title="Re-fetch outputs from the database"
+            >
+              <RefreshCw className="mr-1 h-3 w-3" /> Refresh
+            </Button>
+          </div>
         </div>
         <Separator className="mb-4" />
+        {/* Surface the most recent failure so silent errors aren't invisible. */}
+        {(() => {
+          const lastFailed = props.requests.find(
+            (r) => r.status === "failed" && r.error_message
+          );
+          if (!lastFailed) return null;
+          return (
+            <div className="mb-4 flex items-start gap-2 rounded-md border border-[var(--color-destructive)]/30 bg-[var(--color-destructive)]/5 p-3 text-xs text-[var(--color-destructive)]">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <div>
+                <div className="font-medium">Last run failed</div>
+                <div className="mt-0.5">{lastFailed.error_message}</div>
+              </div>
+            </div>
+          );
+        })()}
         {grouped.size === 0 ? (
           <div className="rounded-lg border border-dashed border-[var(--color-border)] py-16 text-center">
             <p className="text-sm text-[var(--color-muted-foreground)]">
-              No outputs yet. Pick a product, choose styles + ratios, hit Generate.
+              {props.requests.length > 0
+                ? "Requests exist for this project but no images came back yet — click Refresh, or check the SQL editor."
+                : "No outputs yet. Pick a product, choose styles + ratios, hit Generate."}
             </p>
           </div>
         ) : (

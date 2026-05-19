@@ -9,11 +9,12 @@
 //   - fal-recraft-v3           (Recraft V3 via fal.ai, premium, single-ref)
 //   - fal-seedream-v4-edit     (ByteDance Seedream V4 via fal.ai, premium)
 //   - fal-ideogram-v3          (Ideogram V3 via fal.ai, premium, text/logo)
+//   - recraft-v3 (native)      (Recraft native API, premium) — verified by /test
+//   - gemini-flash-image (native) (Google AI Studio, standard) — verified by /test
 //
-// DISABLED native adapters (kept in the codebase for reference; never matched
-// the real provider API contract — fal.ai versions of the same models are
-// active above):
-//   - seedreamProvider, recraftProvider, qwenImageEditProvider, geminiProvider
+// DISABLED native adapters (contract still wrong, fal versions cover them):
+//   - seedreamProvider (BytePlus ARK — needs valid per-account model id)
+//   - qwenImageEditProvider (multimodal-generation only describes, not edits)
 //
 // Each adapter's canHandle() reads its API key from process.env directly,
 // so the registry naturally degrades to whatever's actually wired up. If
@@ -32,16 +33,15 @@ import {
   falSeedreamV4Edit,
   falIdeogramV3,
 } from "@/lib/services/providers/adapters/fal-provider";
-// Disabled native adapters — kept importable for the test bench but not in
-// the registry rotation.
+// Native adapters confirmed working by /test bench → moved into rotation.
+import { recraftProvider } from "@/lib/services/providers/adapters/recraft-provider";
+import { geminiProvider } from "@/lib/services/providers/adapters/gemini-provider";
+// Native adapters that still 404 / use the wrong endpoint — kept importable
+// but out of rotation.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { seedreamProvider } from "@/lib/services/providers/adapters/seedream-provider";
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { recraftProvider } from "@/lib/services/providers/adapters/recraft-provider";
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import { qwenImageEditProvider } from "@/lib/services/providers/adapters/qwen-image-edit-provider";
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { geminiProvider } from "@/lib/services/providers/adapters/gemini-provider";
 import type { QualityPriority } from "@/lib/services/generation/payload-schema";
 import type {
   ImageGenerationCallArgs,
@@ -55,6 +55,9 @@ const PROVIDERS: ImageProvider[] = [
   falRecraftV3,
   falSeedreamV4Edit,
   falIdeogramV3,
+  // Native adapters confirmed working by /test bench.
+  recraftProvider,
+  geminiProvider,
 ];
 
 export interface SelectProviderArgs {

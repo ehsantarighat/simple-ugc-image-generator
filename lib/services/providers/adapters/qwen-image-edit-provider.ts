@@ -30,7 +30,9 @@ const info: ImageProviderInfo = {
     supportsMultiImageReference: true,
     supportsImageEditing: true,
     supportsHighResolution: true,
-    maxReferenceImages: 4,
+    // DashScope multimodal-generation messages cap at 3 content items total
+    // (image + text). 2 image refs + 1 text prompt = 3 — the limit.
+    maxReferenceImages: 2,
     notes:
       "Alibaba Qwen Image Edit Plus/Max — strong editing fidelity, multi-image reference, ideal for refinement and small-change workflows.",
   },

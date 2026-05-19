@@ -135,6 +135,9 @@ export function createFalProvider(config: FalModelConfig): ImageProvider {
 
 // FLUX Pro Kontext Multi — best general-purpose image editing with multiple
 // reference images. Premium tier, multi-ref. Most flexible for UGC composites.
+// Schema notes: passing output_format="png" or an explicit aspect_ratio both
+// 422'd against the live API; safer to pass only the required fields and let
+// fal apply defaults.
 export const falFluxKontextMulti = createFalProvider({
   id: "fal-flux-kontext-multi",
   falModelPath: "fal-ai/flux-pro/kontext/multi",
@@ -146,8 +149,6 @@ export const falFluxKontextMulti = createFalProvider({
     prompt: args.prompt,
     image_urls: imageUrls,
     num_images: args.output.numberOfVariations,
-    aspect_ratio: args.output.aspectRatio,
-    output_format: "png",
   }),
 });
 
@@ -164,7 +165,6 @@ export const falNanoBananaEdit = createFalProvider({
     prompt: args.prompt,
     image_urls: imageUrls,
     num_images: args.output.numberOfVariations,
-    output_format: "png",
   }),
 });
 
